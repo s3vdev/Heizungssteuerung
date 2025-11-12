@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heizungssteuerung</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e8ba3 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #2c3e50;
+        }
+        
+        .header {
+            max-width: 1200px;
+            margin: 0 auto 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .demo-badge {
+            background: #ff9800;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            display: none;
+        }
+        
+        .demo-badge.active {
+            display: inline-block;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .current-time {
+            font-size: 16px;
+            color: #2c3e50;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #95a5a6;
+        }
+        
+        .status-dot.connected {
+            background: #27ae60;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .card-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-active {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+        
+        .badge-inactive {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .badge-manual { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .badge-auto { 
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+        .badge-schedule { 
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        /* Temperature Display */
+        .temp-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .temp-item {
+            text-align: center;
+            padding: 24px 16px;
+            background: linear-gradient(135deg, #FF6B6B 0%, #E74C3C 100%);
+            border-radius: 8px;
+            color: white;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+        
+        .temp-item:nth-child(2) {
+            background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+            box-shadow: 0 4px 12px rgba(255, 165, 0, 0.3);
+        }
+        
+        .temp-value {
+            font-size: 42px;
+            font-weight: 300;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        
+        .temp-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+        }
+        
+        .temp-error {
+            font-size: 18px;
+            color: #e74c3c;
+        }
+        
+        /* Hysteresis Stats */
+        .hyst-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .hyst-item {
+            padding: 12px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .hyst-label {
+            font-size: 11px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .hyst-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        /* Mode Control */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .mode-button {
+            padding: 10px;
+            border: 2px solid #e1e8ed;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #7f8c8d;
+            transition: all 0.2s;
+        }
+        
+        .mode-button:hover {
+            border-color: #3498db;
+        }
+        
+        .mode-button.active {
+            border-color: transparent;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        /* Toggle Switch */
+        .toggle-control {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .toggle-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 52px;
+            height: 28px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 28px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        
+        /* Settings */
+        .setting-item {
+            margin-bottom: 16px;
+        }
+        
+        .setting-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .setting-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #7f8c8d;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .setting-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #dce1e6;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+        
+        .setting-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .input-with-unit {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .input-with-unit input {
+            flex: 1;
+        }
+        
+        .input-unit {
+            font-size: 14px;
+            color: #7f8c8d;
+            font-weight: 600;
+        }
+        
+        /* Schedule */
+        .schedule-item {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .schedule-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .schedule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .schedule-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .checkbox-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .checkbox-control input {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .schedule-times {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .time-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #dce1e6;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        /* Button */
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a4091 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+        }
+        
+        /* Info Box */
+        .info-box {
+            background: #e8f4f8;
+            border-left: 3px solid #3498db;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #5a6c7d;
+            line-height: 1.4;
+        }
+        
+        .info-box.warning {
+            background: #fef9e7;
+            border-left-color: #f39c12;
+        }
+        
+        /* Stats */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        
+        .stat-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        /* Demo Controls */
+        .demo-controls {
+            display: none;
+        }
+        
+        .demo-controls.active {
+            display: block;
+        }
+        
+        .demo-button-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        
+        .demo-button {
+            padding: 8px;
+            border: 1px solid #dce1e6;
+            border-radius: 4px;
+            background: white;
+            font-size: 12px;
+            font-weight: 500;
+            color: #5a6c7d;
+            cursor: pointer;
+        }
+        
+        .demo-button:hover {
+            background: #f8f9fa;
+        }
+        
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .temp-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 12px;
+                padding: 16px;
+                align-items: flex-start;
+            }
+            
+            .header-left {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .header h1 {
+                font-size: 18px;
+            }
+            
+            .header-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .current-time {
+                font-size: 18px;
+            }
+            
+            .mode-selector {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            
+            .temp-value {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>Heizungssteuerung</h1>
+            <div class="demo-badge" id="demoBadge">DEMO</div>
+        </div>
+        <div class="header-right">
+            <div class="current-time" id="currentTime">--:--</div>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="connectionText">Verbinde...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="left-column">
+            <!-- Temperature Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Temperaturen</div>
+                    <div class="card-badge" id="relayBadge">Aus</div>
+                </div>
+                <div class="temp-grid">
+                    <div class="temp-item">
+                        <div class="temp-value" id="tempVorlauf">--</div>
+                        <div class="temp-label">Vorlauf</div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-value" id="tempRuecklauf">--</div>
+                        <div class="temp-label">Rücklauf</div>
+                    </div>
+                </div>
+                <div class="hyst-stats">
+                    <div class="hyst-item">
+                        <div class="hyst-label">EIN ab</div>
+                        <div class="hyst-value" id="statTempOn">--°C</div>
+                    </div>
+                    <div class="hyst-item">
+                        <div class="hyst-label">AUS ab</div>
+                        <div class="hyst-value" id="statTempOff">--°C</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW: Efficiency Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Temperatur-Differenz</div>
+                </div>
+                <div style="text-align: center; padding: 20px 0;">
+                    <div style="font-size: 42px; font-weight: 300; color: #3498db; margin-bottom: 8px;" id="tempDiff">Δ --°C</div>
+                    <div style="font-size: 13px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Vorlauf - Rücklauf</div>
+                    <div style="width: 100%; background: #ecf0f1; height: 24px; border-radius: 12px; overflow: hidden;">
+                        <div id="efficiencyBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%); transition: width 0.5s;"></div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 14px; color: #2c3e50; font-weight: 600;">
+                        Effizienz: <span id="efficiencyValue">--%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Steuerung</div>
+                    <div class="card-badge" id="modeBadge">Manuell</div>
+                </div>
+                
+                <div class="mode-selector">
+                    <button class="mode-button active" id="modeManual" onclick="setMode('manual')">Manuell</button>
+                    <button class="mode-button" id="modeAuto" onclick="setMode('auto')">Automatik</button>
+                    <button class="mode-button" id="modeSchedule" onclick="setMode('schedule')">Zeitplan</button>
+                </div>
+                
+                <div class="toggle-control" id="manualControl">
+                    <div class="toggle-label">Heizung</div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="heatingToggle" onchange="toggleHeating()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <div id="autoInfo" style="display: none;">
+                    <div class="info-box">
+                        Automatische Temperaturregelung aktiv
+                    </div>
+                </div>
+                
+                <div id="scheduleInfo" style="display: none;">
+                    <div class="info-box">
+                        Zeitplansteuerung aktiv
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Card (Auto) -->
+            <div class="card" id="hystereseCard" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">Temperatur-Einstellungen</div>
+                </div>
+                
+                <div class="setting-item">
+                    <label class="setting-label">EIN-Temperatur</label>
+                    <div class="input-with-unit">
+                        <input type="number" class="setting-input" id="tempOn" value="30" step="0.5">
+                        <span class="input-unit">°C</span>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <label class="setting-label">AUS-Temperatur</label>
+                    <div class="input-with-unit">
+                        <input type="number" class="setting-input" id="tempOff" value="40" step="0.5">
+                        <span class="input-unit">°C</span>
+                    </div>
+                </div>
+                
+                <div id="hystereseWarning" class="info-box warning" style="display: none; margin: 12px 0;">
+                    AUS-Temperatur muss höher sein!
+                </div>
+                
+                <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
+            </div>
+
+            <!-- Schedule Card -->
+            <div class="card" id="scheduleCard" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">Zeitplan konfigurieren</div>
+                </div>
+                
+                <div id="scheduleList"></div>
+                
+                <button class="btn btn-primary" onclick="saveSettings()" style="margin-top: 12px;">Zeitplan speichern</button>
+            </div>
+        </div>
+
+        <div class="right-column">
+            <!-- NEW: Statistics Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Statistik</div>
+                </div>
+                
+                <div class="stat-row">
+                    <span class="stat-label">Heute geschaltet</span>
+                    <span class="stat-value" id="todaySwitches">0x</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Gesamt geschaltet</span>
+                    <span class="stat-value" id="totalSwitches">0x</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Laufzeit (ON)</span>
+                    <span class="stat-value" id="onTimeValue">0h 0m</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Aus-Zeit (OFF)</span>
+                    <span class="stat-value" id="offTimeValue">0h 0m</span>
+                </div>
+            </div>
+
+            <!-- NEW: Frost Protection Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Frostschutz</div>
+                </div>
+                
+                <div class="toggle-control" style="margin-bottom: 16px;">
+                    <div class="toggle-label">Frostschutz aktiv</div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="frostEnabled" onchange="saveFrostProtection()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <div class="setting-item" id="frostTempSetting" style="display: none;">
+                    <label class="setting-label">Mindesttemperatur</label>
+                    <div class="input-with-unit">
+                        <input type="number" class="setting-input" id="frostTemp" value="8" min="5" max="15" step="0.5" onchange="saveFrostProtection()">
+                        <span class="input-unit">°C</span>
+                    </div>
+                </div>
+                
+                <div class="info-box" style="font-size: 12px;">
+                    Hält Mindesttemperatur bei Abwesenheit. Überschreibt alle anderen Modi.
+                </div>
+            </div>
+
+            <!-- System Info Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">System</div>
+                </div>
+                
+                <div class="stat-row">
+                    <span class="stat-label">WiFi-Signal</span>
+                    <span class="stat-value" id="rssiValue">-- dBm</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Betriebszeit</span>
+                    <span class="stat-value" id="uptimeValue">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">NTP-Status</span>
+                    <span class="stat-value" id="ntpStatus">--</span>
+                </div>
+            </div>
+
+            <!-- Demo Controls -->
+            <div class="card demo-controls" id="demoControls">
+                <div class="card-header">
+                    <div class="card-title">Demo</div>
+                </div>
+                <div class="demo-button-group">
+                    <button class="demo-button" onclick="simulateSensorError()">Sensorfehler</button>
+                    <button class="demo-button" onclick="simulateTempChange()">Temp ändern</button>
+                    <button class="demo-button" onclick="simulateSchedule()">Zeitplan</button>
+                    <button class="demo-button" onclick="resetDemo()">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MAX_SCHEDULES = 4;
+        
+        let currentState = {
+            tempVorlauf: null,
+            tempRuecklauf: null,
+            heating: false,
+            mode: 'manual',
+            tempOn: 30,
+            tempOff: 40,
+            rssi: null,
+            uptime: 0,
+            currentTime: null,
+            ntpSynced: false,
+            schedules: [],
+            tempDiff: null,
+            efficiency: 0,
+            switchCount: 0,
+            todaySwitches: 0,
+            onTimeSeconds: 0,
+            offTimeSeconds: 0,
+            frostEnabled: false,
+            frostTemp: 8
+        };
+        
+        let isLocalMode = false;
+        let simulationInterval = null;
+        
+        for (let i = 0; i < MAX_SCHEDULES; i++) {
+            currentState.schedules.push({
+                enabled: false,
+                start: '00:00',
+                end: '00:00'
+            });
+        }
+        
+        function detectMode() {
+            const hostname = window.location.hostname;
+            const protocol = window.location.protocol;
+            
+            isLocalMode = protocol === 'file:' || 
+                         hostname === 'localhost' || 
+                         hostname === '127.0.0.1' ||
+                         hostname === '';
+            
+            if (isLocalMode) {
+                document.getElementById('demoBadge').classList.add('active');
+                document.getElementById('demoControls').classList.add('active');
+                
+                currentState.tempVorlauf = 45.3;
+                currentState.tempRuecklauf = 22.2;
+                currentState.ntpSynced = true;
+                currentState.rssi = -68;
+                currentState.schedules[0] = { enabled: true, start: '05:30', end: '23:30' };
+                
+                startSimulation();
+            }
+        }
+        
+        function startSimulation() {
+            if (!isLocalMode || simulationInterval) return;
+            
+            simulationInterval = setInterval(() => {
+                const now = new Date();
+                currentState.currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                
+                if (currentState.tempVorlauf !== null) {
+                    if (currentState.heating) {
+                        currentState.tempVorlauf += Math.random() * 0.5;
+                        currentState.tempRuecklauf += Math.random() * 0.4;
+                    } else {
+                        currentState.tempVorlauf -= Math.random() * 0.3;
+                        currentState.tempRuecklauf -= Math.random() * 0.3;
+                    }
+                    
+                    currentState.tempVorlauf = Math.max(20, Math.min(80, currentState.tempVorlauf));
+                    currentState.tempRuecklauf = Math.max(15, Math.min(70, currentState.tempRuecklauf));
+                }
+                
+                if (currentState.mode === 'auto' && currentState.tempRuecklauf !== null) {
+                    if (currentState.tempRuecklauf <= currentState.tempOn && !currentState.heating) {
+                        currentState.heating = true;
+                    } else if (currentState.tempRuecklauf >= currentState.tempOff && currentState.heating) {
+                        currentState.heating = false;
+                    }
+                }
+                
+                currentState.rssi = -68 + Math.floor(Math.random() * 8) - 4;
+                currentState.uptime += 1;
+                
+                // Simulate stats
+                if (currentState.heating && Math.random() > 0.99) {
+                    currentState.todaySwitches = Math.min(currentState.todaySwitches + 1, 99);
+                    currentState.switchCount++;
+                }
+                currentState.onTimeSeconds += currentState.heating ? 1 : 0;
+                currentState.offTimeSeconds += !currentState.heating ? 1 : 0;
+                
+                // Calculate difference
+                if (currentState.tempVorlauf !== null && currentState.tempRuecklauf !== null) {
+                    currentState.tempDiff = currentState.tempVorlauf - currentState.tempRuecklauf;
+                    const diff = currentState.tempDiff;
+                    if (diff >= 10 && diff <= 15) {
+                        currentState.efficiency = 100;
+                    } else if (diff > 15) {
+                        currentState.efficiency = Math.round(Math.max(0, 100 - ((diff - 15) * 5)));
+                    } else {
+                        currentState.efficiency = Math.round(Math.max(0, (diff / 10) * 100));
+                    }
+                }
+                
+                updateUI();
+            }, 1000);
+        }
+        
+        async function updateStatus() {
+            if (isLocalMode) return;
+            
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) throw new Error('API failed');
+                
+                const data = await response.json();
+                currentState = {
+                    tempVorlauf: data.tempVorlauf,
+                    tempRuecklauf: data.tempRuecklauf,
+                    heating: data.heating,
+                    mode: data.mode,
+                    tempOn: data.tempOn,
+                    tempOff: data.tempOff,
+                    rssi: data.rssi,
+                    uptime: data.uptime,
+                    currentTime: data.currentTime,
+                    ntpSynced: data.ntpSynced,
+                    schedules: data.schedules || currentState.schedules,
+                    tempDiff: data.tempDiff,
+                    efficiency: data.efficiency || 0,
+                    switchCount: data.switchCount || 0,
+                    todaySwitches: data.todaySwitches || 0,
+                    onTimeSeconds: data.onTimeSeconds || 0,
+                    offTimeSeconds: data.offTimeSeconds || 0,
+                    frostEnabled: data.frostEnabled || false,
+                    frostTemp: data.frostTemp || 8
+                };
+                
+                updateConnectionStatus(true);
+            } catch (error) {
+                console.error('Status fetch failed:', error);
+                updateConnectionStatus(false);
+            }
+            
+            updateUI();
+        }
+        
+        function updateUI() {
+            // Temperatures
+            const vl = document.getElementById('tempVorlauf');
+            const rl = document.getElementById('tempRuecklauf');
+            
+            vl.textContent = currentState.tempVorlauf !== null ? currentState.tempVorlauf.toFixed(1) + '°C' : 'ERROR';
+            rl.textContent = currentState.tempRuecklauf !== null ? currentState.tempRuecklauf.toFixed(1) + '°C' : 'ERROR';
+            
+            // Relay badge
+            const badge = document.getElementById('relayBadge');
+            badge.textContent = currentState.heating ? 'Aktiv' : 'Aus';
+            badge.className = 'card-badge ' + (currentState.heating ? 'badge-active' : 'badge-inactive');
+            
+            // Mode
+            const modeBadge = document.getElementById('modeBadge');
+            let modeText = 'Manuell', modeClass = 'badge-manual';
+            if (currentState.mode === 'auto') { modeText = 'Automatik'; modeClass = 'badge-auto'; }
+            else if (currentState.mode === 'schedule') { modeText = 'Zeitplan'; modeClass = 'badge-schedule'; }
+            
+            modeBadge.textContent = modeText;
+            modeBadge.className = 'card-badge ' + modeClass;
+            
+            document.getElementById('modeManual').classList.toggle('active', currentState.mode === 'manual');
+            document.getElementById('modeAuto').classList.toggle('active', currentState.mode === 'auto');
+            document.getElementById('modeSchedule').classList.toggle('active', currentState.mode === 'schedule');
+            
+            // Show/hide controls
+            document.getElementById('manualControl').style.display = currentState.mode === 'manual' ? 'flex' : 'none';
+            document.getElementById('autoInfo').style.display = currentState.mode === 'auto' ? 'block' : 'none';
+            document.getElementById('scheduleInfo').style.display = currentState.mode === 'schedule' ? 'block' : 'none';
+            
+            document.getElementById('hystereseCard').style.display = currentState.mode === 'auto' ? 'block' : 'none';
+            document.getElementById('scheduleCard').style.display = currentState.mode === 'schedule' ? 'block' : 'none';
+            
+            // Toggle & settings
+            document.getElementById('heatingToggle').checked = currentState.heating;
+            document.getElementById('statTempOn').textContent = currentState.tempOn + '°C';
+            document.getElementById('statTempOff').textContent = currentState.tempOff + '°C';
+            document.getElementById('tempOn').value = currentState.tempOn;
+            document.getElementById('tempOff').value = currentState.tempOff;
+            
+            // Schedule list
+            updateScheduleList();
+            
+            // Temperature difference & efficiency
+            if (currentState.tempDiff !== null && currentState.tempDiff !== undefined) {
+                document.getElementById('tempDiff').textContent = 'Δ ' + currentState.tempDiff.toFixed(1) + '°C';
+                const efficiencyRounded = Math.round(currentState.efficiency);
+                document.getElementById('efficiencyValue').textContent = efficiencyRounded + '%';
+                document.getElementById('efficiencyBar').style.width = efficiencyRounded + '%';
+            } else {
+                document.getElementById('tempDiff').textContent = 'Δ --°C';
+                document.getElementById('efficiencyValue').textContent = '--%';
+                document.getElementById('efficiencyBar').style.width = '0%';
+            }
+            
+            // Statistics
+            document.getElementById('todaySwitches').textContent = currentState.todaySwitches + 'x';
+            document.getElementById('totalSwitches').textContent = currentState.switchCount + 'x';
+            document.getElementById('onTimeValue').textContent = formatUptime(currentState.onTimeSeconds);
+            document.getElementById('offTimeValue').textContent = formatUptime(currentState.offTimeSeconds);
+            
+            // Frost protection
+            document.getElementById('frostEnabled').checked = currentState.frostEnabled;
+            document.getElementById('frostTemp').value = currentState.frostTemp;
+            document.getElementById('frostTempSetting').style.display = currentState.frostEnabled ? 'block' : 'none';
+            
+            // System info
+            document.getElementById('rssiValue').textContent = currentState.rssi !== null ? currentState.rssi + ' dBm' : '--';
+            document.getElementById('uptimeValue').textContent = formatUptime(currentState.uptime);
+            document.getElementById('ntpStatus').textContent = currentState.ntpSynced ? 'Synced' : 'Pending';
+            document.getElementById('currentTime').textContent = currentState.currentTime || '--:--';
+        }
+        
+        function updateScheduleList() {
+            const container = document.getElementById('scheduleList');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < MAX_SCHEDULES; i++) {
+                const s = currentState.schedules[i];
+                const item = document.createElement('div');
+                item.className = 'schedule-item';
+                item.innerHTML = `
+                    <div class="schedule-header">
+                        <div class="schedule-title">Zeitfenster ${i + 1}</div>
+                        <div class="checkbox-control">
+                            <input type="checkbox" id="sched${i}En" ${s.enabled ? 'checked' : ''}>
+                            <label for="sched${i}En">Aktiv</label>
+                        </div>
+                    </div>
+                    <div class="schedule-times">
+                        <input type="time" class="time-input" id="sched${i}Start" value="${s.start}">
+                        <input type="time" class="time-input" id="sched${i}End" value="${s.end}">
+                    </div>
+                `;
+                container.appendChild(item);
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            document.getElementById('statusDot').classList.toggle('connected', connected);
+            document.getElementById('connectionText').textContent = connected ? (isLocalMode ? 'Demo' : 'Verbunden') : 'Fehler';
+        }
+        
+        function formatUptime(sec) {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            return `${h}h ${m}m`;
+        }
+        
+        async function setMode(mode) {
+            currentState.mode = mode;
+            updateUI();
+            
+            if (!isLocalMode) {
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
+                        body: JSON.stringify({ mode: mode })
+                    });
+                } catch (e) { console.error(e); }
+            }
+        }
+        
+        async function toggleHeating() {
+            if (currentState.mode !== 'manual') return;
+            
+            currentState.heating = document.getElementById('heatingToggle').checked;
+            updateUI();
+            
+            if (!isLocalMode) {
+                try {
+                    await fetch('/api/toggle', {
+                        method: 'GET',
+                        headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+                    });
+                } catch (e) { console.error(e); }
+            }
+        }
+        
+        async function saveSettings() {
+            const tempOn = parseFloat(document.getElementById('tempOn').value);
+            const tempOff = parseFloat(document.getElementById('tempOff').value);
+            const warn = document.getElementById('hystereseWarning');
+            
+            if (tempOff <= tempOn) {
+                warn.style.display = 'block';
+                return;
+            }
+            warn.style.display = 'none';
+            
+            currentState.tempOn = tempOn;
+            currentState.tempOff = tempOff;
+            
+            for (let i = 0; i < MAX_SCHEDULES; i++) {
+                currentState.schedules[i].enabled = document.getElementById(`sched${i}En`).checked;
+                currentState.schedules[i].start = document.getElementById(`sched${i}Start`).value;
+                currentState.schedules[i].end = document.getElementById(`sched${i}End`).value;
+            }
+            
+            updateUI();
+            
+            if (!isLocalMode) {
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
+                        body: JSON.stringify({ tempOn, tempOff, schedules: currentState.schedules })
+                    });
+                    alert('Einstellungen gespeichert!');
+                } catch (e) {
+                    alert('Fehler beim Speichern!');
+                }
+            } else {
+                alert('Einstellungen gespeichert (Demo)');
+            }
+        }
+        
+        async function saveFrostProtection() {
+            const enabled = document.getElementById('frostEnabled').checked;
+            const temp = parseFloat(document.getElementById('frostTemp').value);
+            
+            currentState.frostEnabled = enabled;
+            currentState.frostTemp = temp;
+            
+            updateUI();
+            
+            if (!isLocalMode) {
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
+                        body: JSON.stringify({ frostEnabled: enabled, frostTemp: temp })
+                    });
+                } catch (e) {
+                    console.error('Failed to save frost protection:', e);
+                }
+            }
+        }
+        
+        function simulateSensorError() {
+            if (!isLocalMode) return;
+            currentState.tempVorlauf = currentState.tempVorlauf === null ? 45.3 : null;
+            currentState.tempRuecklauf = currentState.tempRuecklauf === null ? 22.2 : null;
+            updateUI();
+        }
+        
+        function simulateTempChange() {
+            if (!isLocalMode) return;
+            currentState.tempVorlauf = Math.random() * 60 + 20;
+            currentState.tempRuecklauf = Math.random() * 50 + 15;
+            updateUI();
+        }
+        
+        function simulateSchedule() {
+            if (!isLocalMode) return;
+            currentState.mode = 'schedule';
+            updateUI();
+        }
+        
+        function resetDemo() {
+            if (!isLocalMode) return;
+            currentState.tempVorlauf = 45.3;
+            currentState.tempRuecklauf = 22.2;
+            currentState.heating = false;
+            currentState.mode = 'manual';
+            updateUI();
+        }
+        
+        setInterval(() => { if (!isLocalMode) updateStatus(); }, 1000);
+        
+        detectMode();
+        updateConnectionStatus(true);
+        updateUI();
+        if (!isLocalMode) updateStatus();
+    </script>
+</body>
+</html>
