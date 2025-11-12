@@ -58,12 +58,15 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 
 ## 🔌 Hardware
 
-### Komponenten
-- **ESP32 DevKit V1 (WROOM-32)**
-- **2x DS18B20 Temperatursensoren** (One-Wire, beide am gleichen Bus)
-- **Relais-Modul** (Active-Low, 5V)
-- **Pull-Up Widerstand** 4.7 kΩ
-- **Spannungsversorgung** (LM2596 oder USB)
+### Benötigte Komponenten
+
+| Komponente | Anzahl | Beschreibung |
+|------------|--------|--------------|
+| **ESP32 DevKit V1 (WROOM-32) USB-C** | 1x | Mikrocontroller mit WiFi & Bluetooth |
+| **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
+| **1-Kanal Relais-Modul** (Active-Low) | 1x | Heizungsschaltung (bis 10A) |
+| **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Für stabile 5V-Versorgung |
+| **4.7 kΩ Widerstand** | 1x | Pull-Up für OneWire-Bus |
 
 ### Pinbelegung
 
