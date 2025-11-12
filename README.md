@@ -2,6 +2,18 @@
 
 Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mit Web-Interface.
 
+## 📸 Dashboard
+
+![Dashboard Screenshot](data/screencapture.png)
+
+**Professionelles Industrial-Dashboard** mit allen Features:
+- 🌡️ **Dual-Temperatur**: Vorlauf (rot) & Rücklauf (orange)
+- 📊 **Effizienz-Anzeige**: Temperatur-Differenz & Performance-Meter
+- 📈 **Statistik**: Schalt-Counter, Laufzeiten (ON/OFF)
+- ❄️ **Frostschutz**: Automatische Mindesttemperatur-Überwachung
+- 🎛️ **3 Modi**: Manuell, Automatik (Hysterese), Zeitplan
+- 📱 **Responsive**: Optimiert für Desktop & Mobile
+
 ## 📋 Features
 
 ### Steuerung
