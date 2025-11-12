@@ -13,6 +13,8 @@
 // ========== PIN CONFIGURATION ==========
 #define RELAY_PIN 23          // GPIO23 for relay control (Active-Low)
 #define ONE_WIRE_BUS 4        // GPIO4 for DS18B20 sensors (both on same bus)
+#define TRIG_PIN 5            // GPIO5 for JSN-SR04T TRIG
+#define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
 #define HOSTNAME "heater"
@@ -24,6 +26,8 @@
 #define DEBOUNCE_MS 300
 #define TEMP_READ_INTERVAL 1000
 #define MAX_SCHEDULES 4
+#define TANK_READ_INTERVAL 5000       // Read tank level every 5 seconds
+#define ULTRASONIC_TIMEOUT 30000      // 30ms timeout for echo (max ~5m range)
 
 // ========== GLOBAL OBJECTS ==========
 AsyncWebServer server(80);
@@ -70,10 +74,19 @@ struct SystemState {
     // Frost protection
     bool frostProtectionEnabled = false;
     float frostProtectionTemp = 8.0;  // Minimum temperature
+    
+    // Tank level monitoring (JSN-SR04T)
+    bool tankSensorAvailable = false;   // Sensor detected and working
+    float tankHeight = 100.0;           // Tank height in cm (from sensor to bottom)
+    float tankCapacity = 1000.0;        // Tank capacity in liters
+    float tankDistance = -1.0;          // Current distance to liquid surface in cm
+    float tankLiters = 0.0;             // Calculated liters
+    int tankPercent = 0;                // Calculated fill percentage
 } state;
 
 unsigned long lastToggleTime = 0;
 unsigned long lastTempRead = 0;
+unsigned long lastTankRead = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
 
@@ -121,6 +134,69 @@ void updateStatistics() {
             Serial.println("Daily statistics reset");
         }
     }
+}
+
+// ========== READ TANK LEVEL (JSN-SR04T) ==========
+float readTankDistance() {
+    // Send 10us pulse to TRIG
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+    
+    // Read ECHO pulse duration (timeout after 30ms)
+    long duration = pulseIn(ECHO_PIN, HIGH, ULTRASONIC_TIMEOUT);
+    
+    // No echo received = sensor error
+    if (duration == 0) {
+        return -1.0;
+    }
+    
+    // Calculate distance in cm (speed of sound: 343 m/s = 0.0343 cm/us)
+    // Distance = (duration / 2) * 0.0343
+    float distance = (duration * 0.0343) / 2.0;
+    
+    // Sanity check: JSN-SR04T range 25cm-450cm
+    if (distance < 2.0 || distance > 500.0) {
+        return -1.0;
+    }
+    
+    return distance;
+}
+
+void updateTankLevel() {
+    float distance = readTankDistance();
+    
+    if (distance < 0) {
+        // Sensor error or not available
+        state.tankSensorAvailable = false;
+        state.tankDistance = -1.0;
+        state.tankLiters = 0.0;
+        state.tankPercent = 0;
+        return;
+    }
+    
+    // Sensor working
+    state.tankSensorAvailable = true;
+    state.tankDistance = distance;
+    
+    // Calculate fill level
+    // fillHeight = tankHeight - distance (distance from sensor to surface)
+    float fillHeight = state.tankHeight - distance;
+    
+    // Clamp to valid range
+    if (fillHeight < 0) fillHeight = 0;
+    if (fillHeight > state.tankHeight) fillHeight = state.tankHeight;
+    
+    // Calculate percentage
+    state.tankPercent = (int)((fillHeight / state.tankHeight) * 100.0);
+    
+    // Calculate liters (assuming cylindrical/rectangular tank)
+    state.tankLiters = (fillHeight / state.tankHeight) * state.tankCapacity;
+    
+    // Round to 1 decimal
+    state.tankLiters = round(state.tankLiters * 10) / 10.0;
 }
 
 // ========== INITIALIZE TEMPERATURE SENSORS ==========
@@ -312,6 +388,10 @@ void loadSettings() {
     state.frostProtectionEnabled = prefs.getBool("frostEnabled", false);
     state.frostProtectionTemp = prefs.getFloat("frostTemp", 8.0);
     
+    // Load tank configuration
+    state.tankHeight = prefs.getFloat("tankHeight", 100.0);
+    state.tankCapacity = prefs.getFloat("tankCapacity", 1000.0);
+    
     // Load schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
         String key = "sched" + String(i);
@@ -345,6 +425,10 @@ void saveSettings() {
     prefs.putFloat("tempOff", state.tempOff);
     prefs.putBool("frostEnabled", state.frostProtectionEnabled);
     prefs.putFloat("frostTemp", state.frostProtectionTemp);
+    
+    // Save tank configuration
+    prefs.putFloat("tankHeight", state.tankHeight);
+    prefs.putFloat("tankCapacity", state.tankCapacity);
     
     if (state.mode == "manual") {
         prefs.putBool("heatingOn", state.heatingOn);
@@ -495,6 +579,20 @@ void setupWebServer() {
         doc["frostEnabled"] = state.frostProtectionEnabled;
         doc["frostTemp"] = state.frostProtectionTemp;
         
+        // Tank level
+        doc["tankAvailable"] = state.tankSensorAvailable;
+        if (state.tankSensorAvailable) {
+            doc["tankDistance"] = round(state.tankDistance * 10) / 10.0;
+            doc["tankLiters"] = round(state.tankLiters * 10) / 10.0;
+            doc["tankPercent"] = state.tankPercent;
+        } else {
+            doc["tankDistance"] = nullptr;
+            doc["tankLiters"] = nullptr;
+            doc["tankPercent"] = nullptr;
+        }
+        doc["tankHeight"] = state.tankHeight;
+        doc["tankCapacity"] = state.tankCapacity;
+        
         // Schedules
         JsonArray schedArray = doc.createNestedArray("schedules");
         for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -589,6 +687,23 @@ void setupWebServer() {
                 }
             }
             
+            // Update tank configuration
+            if (doc.containsKey("tankHeight")) {
+                float height = doc["tankHeight"];
+                if (height > 0 && height <= 500) {  // Max 5 meters
+                    state.tankHeight = height;
+                    changed = true;
+                }
+            }
+            
+            if (doc.containsKey("tankCapacity")) {
+                float capacity = doc["tankCapacity"];
+                if (capacity > 0 && capacity <= 10000) {  // Max 10000 liters
+                    state.tankCapacity = capacity;
+                    changed = true;
+                }
+            }
+            
             // Update temperatures
             if (doc.containsKey("tempOn")) {
                 state.tempOn = doc["tempOn"];
@@ -660,6 +775,11 @@ void setup() {
     pinMode(RELAY_PIN, OUTPUT);
     digitalWrite(RELAY_PIN, HIGH);  // Relay OFF
     
+    // Initialize ultrasonic sensor pins
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
+    digitalWrite(TRIG_PIN, LOW);
+    
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS mount failed!");
         return;
@@ -692,6 +812,15 @@ void setup() {
     readTemperatures();
     Serial.printf("Vorlauf: %.1f°C, Rücklauf: %.1f°C\n", 
                  state.tempVorlauf, state.tempRuecklauf);
+    
+    // Test tank sensor
+    updateTankLevel();
+    if (state.tankSensorAvailable) {
+        Serial.printf("Tank sensor detected: %.1f L (%.0f%%)\n", 
+                     state.tankLiters, (float)state.tankPercent);
+    } else {
+        Serial.println("Tank sensor not available");
+    }
     
     checkFailsafe();
     
@@ -738,6 +867,12 @@ void loop() {
         } else if (state.mode == "schedule") {
             scheduleControl();
         }
+    }
+    
+    // Read tank level every 5 seconds
+    if (now - lastTankRead >= TANK_READ_INTERVAL) {
+        lastTankRead = now;
+        updateTankLevel();
     }
     
     if (!state.apModeActive && WiFi.status() != WL_CONNECTED) {

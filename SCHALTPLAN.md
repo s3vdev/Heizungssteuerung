@@ -74,6 +74,8 @@
 | **GND** | Gemeinsame Masse | GND zu allem! |
 | **3.3V** | DS18B20 VDD (beide) + Pull-Up | Versorgung Sensoren |
 | **GPIO4** | DS18B20 DATA (beide) | OneWire Bus |
+| **GPIO5** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
+| **GPIO18** | JSN-SR04T ECHO | Ultraschall Echo (optional) |
 | **GPIO23** | Relais IN | Steuerung (Active-Low!) |
 
 ### DS18B20 Sensoren (beide identisch verdrahtet)
@@ -99,6 +101,29 @@
 **Active-Low Logik:**
 - GPIO23 = **LOW** (0V) → Relais **EIN** → Heizung läuft
 - GPIO23 = **HIGH** (3.3V) → Relais **AUS** → Heizung aus
+
+### JSN-SR04T Ultraschall-Sensor (optional)
+
+| Sensor Pin | Verbindung | Beschreibung |
+|------------|------------|--------------|
+| **VCC** | 5V | Stromversorgung |
+| **TRIG** | ESP32 GPIO5 | Trigger-Signal |
+| **ECHO** | ESP32 GPIO18 | Echo-Rückmeldung |
+| **GND** | GND | Masse |
+
+**Funktion:**
+- Misst Abstand zur Flüssigkeitsoberfläche im Tank
+- Berechnet Füllstand in Litern & Prozent
+- Messbereich: 25 cm - 450 cm
+- Wasserdicht (IP67)
+- Von **oben** in den Tank montieren
+
+**Montage-Hinweise:**
+- Sensor zeigt senkrecht nach unten auf die Flüssigkeit
+- Mindestabstand: 25 cm zur Oberfläche
+- Maximaler Abstand: 450 cm
+- Konfiguration im Dashboard: Tankhöhe & Kapazität eingeben
+- Fallback: Falls nicht angeschlossen → Dashboard zeigt "N/A"
 
 ### LM2596S Spannungsregler
 
@@ -158,26 +183,45 @@
    - Toggle-Button klicken
    - Relais sollte **klicken**!
 
+### Phase 3.5: JSN-SR04T Sensor (optional)
+
+9. **Sensor anschließen:**
+   - VCC → 5V (vom LM2596S)
+   - GND → Gemeinsame Masse
+   - TRIG → ESP32 GPIO5
+   - ECHO → ESP32 GPIO18
+
+10. **Test:**
+    - Software neuflashen (falls schon geflasht)
+    - Serial Monitor: "Tank sensor detected" oder "Tank sensor not available"
+    - Dashboard öffnen: Tankinhalt-Card sollte sichtbar sein
+    - Falls "Sensor nicht verfügbar" → optional, kein Problem
+
+11. **Konfiguration im Tank:**
+    - Sensor von oben in Tank montieren (senkrecht nach unten)
+    - Im Dashboard: Tankhöhe (cm) und Tankkapazität (Liter) eingeben
+    - Füllstand sollte jetzt angezeigt werden
+
 ### Phase 4: Heizung (MIT VORSICHT!)
 
 ⚠️ **ACHTUNG: AB HIER 230V NETZSPANNUNG!** ⚠️
 
-9. **STROMZUFUHR AUSSCHALTEN!**
-   - Sicherung raus
-   - Mit Spannungsprüfer testen
-   - Zweimal prüfen!
+12. **STROMZUFUHR AUSSCHALTEN!**
+    - Sicherung raus
+    - Mit Spannungsprüfer testen
+    - Zweimal prüfen!
 
-10. **W1209 ausbauen:**
+13. **W1209 ausbauen:**
     - Alle Verbindungen dokumentieren (Foto!)
     - Abklemmen
     - Beiseite legen
 
-11. **Relais einbauen:**
+14. **Relais einbauen:**
     - Phase (L) von Verteilung → Relais COM
     - Relais NO → Heizgerät
     - **NIEMALS N oder PE durch Relais!**
 
-12. **Erste Inbetriebnahme:**
+15. **Erste Inbetriebnahme:**
     - Nochmals ALLE Verbindungen prüfen
     - Sicherung wieder rein
     - Im manuellen Modus testen

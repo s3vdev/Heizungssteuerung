@@ -51,6 +51,12 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 - ✅ **NTP-Zeitsynchronisation** (Europa/Berlin)
 - ✅ **System-Info**: RSSI, Betriebszeit
 
+### Monitoring
+- ✅ **Tankfüllstand**: Ultraschall-Sensor für Heizöl/Pellets-Füllstand (optional)
+- ✅ **Temperatur-Differenz & Effizienz**: Vorlauf-Rücklauf-Analyse
+- ✅ **Schalt-Statistiken**: Zähler für tägliche/gesamte Schaltvorgänge
+- ✅ **Laufzeit-Tracking**: ON/OFF-Zeiten
+
 ### Interface
 - ✅ **Professionelles Dashboard-Design**
 - ✅ **Responsive**: Funktioniert auf Desktop & Mobile
@@ -64,6 +70,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 |------------|--------|--------------|
 | **ESP32 DevKit V1 (WROOM-32) USB-C** | 1x | Mikrocontroller mit WiFi & Bluetooth |
 | **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
+| **JSN-SR04T Ultraschall-Sensor** (wasserdicht) | 1x | Tankfüllstand-Messung (optional) |
 | **1-Kanal Relais-Modul** (Active-Low) | 1x | Heizungsschaltung (bis 10A) |
 | **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Für stabile 5V-Versorgung |
 | **4.7 kΩ Widerstand** | 1x | Pull-Up für OneWire-Bus |
@@ -75,11 +82,16 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | DS18B20 #1 (Vorlauf) | GPIO4 | One-Wire Bus |
 | DS18B20 #2 (Rücklauf) | GPIO4 | One-Wire Bus (parallel) |
 | Pull-Up Widerstand | GPIO4 → 3.3V | 4.7kΩ (einer für beide Sensoren) |
+| JSN-SR04T TRIG | GPIO5 | Ultraschall Trigger |
+| JSN-SR04T ECHO | GPIO18 | Ultraschall Echo |
+| JSN-SR04T VCC | 5V | Versorgung |
+| JSN-SR04T GND | GND | Gemeinsame Masse |
 | Relais IN | GPIO23 | Active-Low (LOW=EIN, HIGH=AUS) |
 | Relais VCC | 5V | Externe Versorgung |
 | Relais GND | GND | Gemeinsame Masse |
 
 ### Sensor-Anschluss
+
 **Beide DS18B20 parallel am gleichen OneWire-Bus:**
 - Alle **GND** zusammen an ESP32 GND
 - Alle **VDD** zusammen an ESP32 3.3V
@@ -87,6 +99,15 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 - **Ein** 4.7kΩ Pull-Up zwischen DATA und 3.3V
 
 Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durch Software!
+
+**JSN-SR04T Ultraschall-Sensor (optional):**
+- **VCC** → ESP32 5V (oder externe 5V)
+- **GND** → ESP32 GND
+- **TRIG** → ESP32 GPIO5
+- **ECHO** → ESP32 GPIO18
+- **Montage**: Von oben in den Tank schauen (misst Abstand zur Flüssigkeitsoberfläche)
+- **Messbereich**: 25 cm - 450 cm
+- **Wasserdicht**: IP67 (Sensor-Kopf kann eingetaucht werden)
 
 ### Schaltlogik
 - **Relais Active-Low**: 
@@ -202,6 +223,20 @@ Liefert aktuellen Status:
   "uptime": 3600,
   "ntpSynced": true,
   "currentTime": "14:30",
+  "tempDiff": 13.0,
+  "efficiency": 100,
+  "switchCount": 42,
+  "todaySwitches": 5,
+  "onTimeSeconds": 7200,
+  "offTimeSeconds": 3600,
+  "frostEnabled": false,
+  "frostTemp": 8.0,
+  "tankAvailable": true,
+  "tankDistance": 35.0,
+  "tankLiters": 650.0,
+  "tankPercent": 65,
+  "tankHeight": 100.0,
+  "tankCapacity": 1000.0,
   "schedules": [
     {
       "enabled": true,
@@ -239,6 +274,10 @@ Body:
   "mode": "schedule",
   "tempOn": 30.0,
   "tempOff": 40.0,
+  "frostEnabled": false,
+  "frostTemp": 8.0,
+  "tankHeight": 100.0,
+  "tankCapacity": 1000.0,
   "schedules": [
     {
       "enabled": true,
@@ -265,6 +304,10 @@ Response:
 - `mode`: "manual", "auto" oder "schedule"
 - `tempOn`: EIN-Temperatur (0-100°C, nur für auto-Modus)
 - `tempOff`: AUS-Temperatur (0-100°C, muss > tempOn sein)
+- `frostEnabled`: Frostschutz aktiviert (true/false)
+- `frostTemp`: Mindesttemperatur für Frostschutz (5-15°C)
+- `tankHeight`: Tankhöhe in cm (10-500)
+- `tankCapacity`: Tankkapazität in Litern (10-10000)
 - `schedules`: Array mit bis zu 4 Zeitfenstern
   - `enabled`: true/false
   - `start`: "HH:MM" (z.B. "05:30")

@@ -767,6 +767,60 @@
                 </div>
             </div>
 
+            <!-- NEW: Tank Level Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Tankinhalt</div>
+                </div>
+                
+                <div id="tankAvailableContainer">
+                    <!-- Visual tank display -->
+                    <div style="text-align: center; padding: 20px 0;">
+                        <div style="font-size: 48px; font-weight: 300; color: #3498db; margin-bottom: 8px;" id="tankLiters">-- L</div>
+                        <div style="font-size: 13px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Verbleibend</div>
+                        
+                        <!-- Tank visualization -->
+                        <div style="width: 100%; max-width: 200px; height: 200px; border: 3px solid #3498db; border-radius: 8px; margin: 0 auto; position: relative; overflow: hidden; background: rgba(52, 152, 219, 0.1);">
+                            <div id="tankFillBar" style="position: absolute; bottom: 0; width: 100%; height: 0%; background: linear-gradient(180deg, #3498db 0%, #2980b9 100%); transition: height 0.5s, background 0.5s;"></div>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 32px; font-weight: 600; color: #2c3e50; z-index: 10; text-shadow: 0 0 10px rgba(255,255,255,0.8);" id="tankPercent">--%</div>
+                        </div>
+                        
+                        <div id="tankWarning" style="margin-top: 12px; padding: 8px; background: #e74c3c; color: white; border-radius: 6px; font-size: 13px; font-weight: 600; display: none;">
+                            ⚠️ Niedriger Füllstand!
+                        </div>
+                    </div>
+                    
+                    <!-- Tank settings -->
+                    <div style="border-top: 1px solid #ecf0f1; padding-top: 16px; margin-top: 8px;">
+                        <div class="setting-item">
+                            <label class="setting-label">Tankhöhe</label>
+                            <div class="input-with-unit">
+                                <input type="number" class="setting-input" id="tankHeight" value="100" min="10" max="500" step="1" onchange="saveTankConfig()">
+                                <span class="input-unit">cm</span>
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label class="setting-label">Tankkapazität</label>
+                            <div class="input-with-unit">
+                                <input type="number" class="setting-input" id="tankCapacity" value="1000" min="10" max="10000" step="10" onchange="saveTankConfig()">
+                                <span class="input-unit">Liter</span>
+                            </div>
+                        </div>
+                        
+                        <div class="info-box" style="font-size: 11px;">
+                            Sensor misst Abstand von oben zur Flüssigkeit. Konfiguriere Tankhöhe und Kapazität für korrekte Anzeige.
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="tankNotAvailableContainer" style="display: none; text-align: center; padding: 40px 20px;">
+                    <div style="font-size: 48px; color: #95a5a6; margin-bottom: 12px;">⚠️</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #7f8c8d; margin-bottom: 8px;">Sensor nicht verfügbar</div>
+                    <div style="font-size: 13px; color: #95a5a6;">JSN-SR04T nicht erkannt oder nicht angeschlossen</div>
+                </div>
+            </div>
+
             <!-- System Info Card -->
             <div class="card">
                 <div class="card-header">
@@ -824,7 +878,13 @@
             onTimeSeconds: 0,
             offTimeSeconds: 0,
             frostEnabled: false,
-            frostTemp: 8
+            frostTemp: 8,
+            tankAvailable: false,
+            tankDistance: null,
+            tankLiters: null,
+            tankPercent: null,
+            tankHeight: 100,
+            tankCapacity: 1000
         };
         
         let isLocalMode = false;
@@ -856,6 +916,13 @@
                 currentState.ntpSynced = true;
                 currentState.rssi = -68;
                 currentState.schedules[0] = { enabled: true, start: '05:30', end: '23:30' };
+                
+                // Initialize tank demo data
+                currentState.tankAvailable = true;
+                currentState.tankLiters = 650.0;
+                currentState.tankPercent = 65;
+                currentState.tankHeight = 100;
+                currentState.tankCapacity = 1000;
                 
                 startSimulation();
             }
@@ -913,6 +980,14 @@
                     }
                 }
                 
+                // Simulate tank level (slowly decreasing when heating)
+                if (currentState.tankAvailable) {
+                    if (currentState.heating && Math.random() > 0.95) {
+                        currentState.tankLiters = Math.max(0, currentState.tankLiters - 0.5);
+                        currentState.tankPercent = Math.round((currentState.tankLiters / currentState.tankCapacity) * 100);
+                    }
+                }
+                
                 updateUI();
             }, 1000);
         }
@@ -944,7 +1019,13 @@
                     onTimeSeconds: data.onTimeSeconds || 0,
                     offTimeSeconds: data.offTimeSeconds || 0,
                     frostEnabled: data.frostEnabled || false,
-                    frostTemp: data.frostTemp || 8
+                    frostTemp: data.frostTemp || 8,
+                    tankAvailable: data.tankAvailable || false,
+                    tankDistance: data.tankDistance,
+                    tankLiters: data.tankLiters,
+                    tankPercent: data.tankPercent,
+                    tankHeight: data.tankHeight || 100,
+                    tankCapacity: data.tankCapacity || 1000
                 };
                 
                 updateConnectionStatus(true);
@@ -1022,6 +1103,37 @@
             document.getElementById('frostEnabled').checked = currentState.frostEnabled;
             document.getElementById('frostTemp').value = currentState.frostTemp;
             document.getElementById('frostTempSetting').style.display = currentState.frostEnabled ? 'block' : 'none';
+            
+            // Tank level
+            document.getElementById('tankHeight').value = currentState.tankHeight;
+            document.getElementById('tankCapacity').value = currentState.tankCapacity;
+            
+            if (currentState.tankAvailable) {
+                document.getElementById('tankAvailableContainer').style.display = 'block';
+                document.getElementById('tankNotAvailableContainer').style.display = 'none';
+                
+                const liters = currentState.tankLiters || 0;
+                const percent = currentState.tankPercent || 0;
+                
+                document.getElementById('tankLiters').textContent = liters.toFixed(1) + ' L';
+                document.getElementById('tankPercent').textContent = percent + '%';
+                document.getElementById('tankFillBar').style.height = percent + '%';
+                
+                // Color based on fill level
+                if (percent < 20) {
+                    document.getElementById('tankFillBar').style.background = 'linear-gradient(180deg, #e74c3c 0%, #c0392b 100%)';
+                    document.getElementById('tankWarning').style.display = 'block';
+                } else if (percent < 50) {
+                    document.getElementById('tankFillBar').style.background = 'linear-gradient(180deg, #f39c12 0%, #e67e22 100%)';
+                    document.getElementById('tankWarning').style.display = 'none';
+                } else {
+                    document.getElementById('tankFillBar').style.background = 'linear-gradient(180deg, #3498db 0%, #2980b9 100%)';
+                    document.getElementById('tankWarning').style.display = 'none';
+                }
+            } else {
+                document.getElementById('tankAvailableContainer').style.display = 'none';
+                document.getElementById('tankNotAvailableContainer').style.display = 'block';
+            }
             
             // System info
             document.getElementById('rssiValue').textContent = currentState.rssi !== null ? currentState.rssi + ' dBm' : '--';
@@ -1153,6 +1265,26 @@
                     });
                 } catch (e) {
                     console.error('Failed to save frost protection:', e);
+                }
+            }
+        }
+        
+        async function saveTankConfig() {
+            const height = parseFloat(document.getElementById('tankHeight').value);
+            const capacity = parseFloat(document.getElementById('tankCapacity').value);
+            
+            currentState.tankHeight = height;
+            currentState.tankCapacity = capacity;
+            
+            if (!isLocalMode) {
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
+                        body: JSON.stringify({ tankHeight: height, tankCapacity: capacity })
+                    });
+                } catch (e) {
+                    console.error('Failed to save tank config:', e);
                 }
             }
         }
