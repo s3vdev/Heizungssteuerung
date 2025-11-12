@@ -4,13 +4,29 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 
 ## 📸 Dashboard
 
-![Dashboard Screenshot](data/screencapture.png)
+### Automatik-Modus (Hysterese)
+![Dashboard - Automatik-Modus](data/screencapture.png)
 
-**Professionelles Industrial-Dashboard** mit allen Features:
-- 🌡️ **Dual-Temperatur**: Vorlauf (rot) & Rücklauf (orange)
+**Temperaturbasierte Regelung** mit konfigurierbarer Hysterese:
+- 🌡️ **Dual-Temperatur**: Vorlauf (rot) & Rücklauf (orange) in Echtzeit
 - 📊 **Effizienz-Anzeige**: Temperatur-Differenz & Performance-Meter
-- 📈 **Statistik**: Schalt-Counter, Laufzeiten (ON/OFF)
+- ⚙️ **Einstellbare Schwellwerte**: EIN-Temperatur (30°C) / AUS-Temperatur (40°C)
+
+### Zeitplan-Modus
+![Dashboard - Zeitplan-Modus](data/screencapture-3.png)
+
+**Zeitbasierte Steuerung** mit bis zu 4 Zeitfenstern:
+- ⏰ **4 individuelle Zeitfenster**: z.B. 05:30 - 23:30 Uhr
+- 🌙 **Übernacht-Support**: Zeitfenster über Mitternacht möglich
+- ☑️ **Einzeln aktivierbar**: Jedes Fenster kann separat ein-/ausgeschaltet werden
+
+### Weitere Features
+![Dashboard - Weitere Ansicht](data/screencapture-2.png)
+
+**Umfassende Monitoring-Funktionen**:
+- 📈 **Statistik**: Schalt-Counter (heute/gesamt), Laufzeiten (ON/OFF)
 - ❄️ **Frostschutz**: Automatische Mindesttemperatur-Überwachung
+- 📡 **System-Info**: WiFi-Signal, Betriebszeit, NTP-Status
 - 🎛️ **3 Modi**: Manuell, Automatik (Hysterese), Zeitplan
 - 📱 **Responsive**: Optimiert für Desktop & Mobile
 
