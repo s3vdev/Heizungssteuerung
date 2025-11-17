@@ -1344,37 +1344,21 @@
                 currentState.tankHeight = 100;
                 currentState.tankCapacity = 1000;
                 
-                // Try to load saved location & weather from localStorage
-                const savedLocation = localStorage.getItem('demoLocation');
-                const savedWeather = localStorage.getItem('demoWeather');
-                
-                if (savedLocation && savedWeather) {
-                    // Restore saved data
-                    const locationData = JSON.parse(savedLocation);
-                    const weatherData = JSON.parse(savedWeather);
-                    
-                    currentState.latitude = locationData.latitude;
-                    currentState.longitude = locationData.longitude;
-                    currentState.weather = weatherData;
-                    
-                    console.log('Restored location:', weatherData.locationName);
-                } else {
-                    // Initialize with default weather demo data (Köln)
-                    currentState.weather = {
-                        valid: true,
-                        temperature: 5.1,
-                        weatherCode: 3,  // Bewölkt
-                        humidity: 88,
-                        windSpeed: 12.2,
-                        locationName: 'Köln',
-                        tomorrow: {
-                            tempMin: 0.1,
-                            tempMax: 5.8,
-                            weatherCode: 61,  // Leichter Regen
-                            precipitation: 4.0
-                        }
-                    };
-                }
+                // Initialize with default weather demo data (Köln)
+                currentState.weather = {
+                    valid: true,
+                    temperature: 5.1,
+                    weatherCode: 3,  // Bewölkt
+                    humidity: 88,
+                    windSpeed: 12.2,
+                    locationName: 'Köln',
+                    tomorrow: {
+                        tempMin: 0.1,
+                        tempMax: 5.8,
+                        weatherCode: 61,  // Leichter Regen
+                        precipitation: 4.0
+                    }
+                };
                 
                 displayWeather();
                 startSimulation();
@@ -1817,14 +1801,7 @@
                             
                             displayWeather();
                             
-                            // Save to localStorage (Demo-Modus)
-                            localStorage.setItem('demoLocation', JSON.stringify({
-                                latitude: lat,
-                                longitude: lon
-                            }));
-                            localStorage.setItem('demoWeather', JSON.stringify(currentState.weather));
-                            
-                            showToast('Standort & Wetter gespeichert: ' + displayName, 'success', 4000);
+                            showToast('⚠️ Standort & Wetter aktualisiert: ' + displayName + ' (Demo-Modus, nicht persistent!)', 'warning', 4000);
                         } else {
                             throw new Error('Weather API failed');
                         }
@@ -1836,15 +1813,8 @@
                             const tempVariation = (lat - 50) * 0.3;
                             currentState.weather.temperature = 5.1 + tempVariation;
                             displayWeather();
-                            
-                            // Save to localStorage anyway
-                            localStorage.setItem('demoLocation', JSON.stringify({
-                                latitude: lat,
-                                longitude: lon
-                            }));
-                            localStorage.setItem('demoWeather', JSON.stringify(currentState.weather));
                         }
-                        showToast('⚠️ Standort gespeichert: ' + displayName + ' (Wetter simuliert, bleibt nach Reload!)', 'warning', 4000);
+                        showToast('⚠️ Standort aktualisiert: ' + displayName + ' (Wetter simuliert, Demo-Modus)', 'warning', 4000);
                     }
                     
                     // Update input field to show clean city name
