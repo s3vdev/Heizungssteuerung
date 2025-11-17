@@ -45,6 +45,16 @@
             color: #2c3e50;
         }
         
+        .version-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
         .demo-badge {
             background: #ff9800;
             color: white;
@@ -582,6 +592,7 @@
     <div class="header">
         <div class="header-left">
             <h1>Heizungssteuerung</h1>
+            <div class="version-badge" id="versionBadge">v0.0.0</div>
             <div class="demo-badge" id="demoBadge">DEMO</div>
         </div>
         <div class="header-right">
@@ -841,6 +852,76 @@
                 </div>
             </div>
 
+            <!-- Serial Monitor Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Serial Monitor</div>
+                    <label class="toggle-switch" style="margin-left: auto;">
+                        <input type="checkbox" id="serialAutoScroll" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span style="font-size: 12px; color: #7f8c8d; margin-left: 8px;">Auto-Scroll</span>
+                </div>
+                
+                <div id="serialMonitor" style="background: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 11px; padding: 12px; border-radius: 6px; height: 300px; overflow-y: auto; line-height: 1.4; word-break: break-all;">
+                    <div style="color: #608b4e;">// Warte auf Verbindung...</div>
+                </div>
+                
+                <button class="btn btn-secondary" onclick="clearSerialMonitor()" style="margin-top: 12px; font-size: 12px; padding: 6px 12px;">Log löschen</button>
+            </div>
+
+            <!-- OTA Update Card - Firmware -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🔧 Firmware Update (OTA)</div>
+                </div>
+                
+                <div class="info-box" style="margin-bottom: 12px;">
+                    <strong>C++ Code</strong> (Backend-Logik): Nutze <code>pio run</code>, dann <code>firmware.bin</code> hochladen.
+                </div>
+                
+                <form id="otaForm" onsubmit="uploadFirmware(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="file" id="firmwareFile" accept=".bin" required style="padding: 8px; border: 2px dashed #3498db; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    
+                    <button type="submit" class="btn btn-primary" id="uploadBtn">
+                        📤 Firmware hochladen
+                    </button>
+                </form>
+                
+                <div id="uploadProgress" style="display: none; margin-top: 12px;">
+                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
+                        <div id="uploadProgressBar" style="background: linear-gradient(90deg, #27ae60, #2ecc71); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                    </div>
+                    <div id="uploadStatus" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                </div>
+            </div>
+
+            <!-- OTA Update Card - Frontend/LittleFS -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🎨 Frontend Update (OTA)</div>
+                </div>
+                
+                <div class="info-box" style="margin-bottom: 12px;">
+                    <strong>HTML/CSS/JS</strong> (Dashboard): Nutze <code>pio run -t buildfs</code>, dann <code>littlefs.bin</code> hochladen.
+                </div>
+                
+                <form id="otaFormFS" onsubmit="uploadFrontend(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="file" id="frontendFile" accept=".bin" required style="padding: 8px; border: 2px dashed #9b59b6; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    
+                    <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        📤 Frontend hochladen
+                    </button>
+                </form>
+                
+                <div id="uploadProgressFS" style="display: none; margin-top: 12px;">
+                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
+                        <div id="uploadProgressBarFS" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                    </div>
+                    <div id="uploadStatusFS" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                </div>
+            </div>
+
             <!-- Demo Controls -->
             <div class="card demo-controls" id="demoControls">
                 <div class="card-header">
@@ -860,6 +941,7 @@
         const MAX_SCHEDULES = 4;
         
         let currentState = {
+            version: 'v0.0.0',
             tempVorlauf: null,
             tempRuecklauf: null,
             heating: false,
@@ -911,6 +993,7 @@
                 document.getElementById('demoBadge').classList.add('active');
                 document.getElementById('demoControls').classList.add('active');
                 
+                currentState.version = 'v2.1.0-demo';
                 currentState.tempVorlauf = 45.3;
                 currentState.tempRuecklauf = 22.2;
                 currentState.ntpSynced = true;
@@ -926,6 +1009,77 @@
                 
                 startSimulation();
             }
+        }
+        
+        // Demo Serial Monitor Logs
+        let demoLogInterval = null;
+        const demoLogs = [
+            '=== ESP32 Heater Control v2.1.0 ===',
+            'LittleFS mounted',
+            'Found 2 DS18B20 sensor(s)',
+            'WiFi connected: FRITZ!Box 6890 MO',
+            'IP address: 192.168.1.100',
+            'mDNS responder started: heater.local',
+            'NTP time synced!',
+            'WebSocket initialized at /ws',
+            'OTA initialized at /update',
+            'Web server started',
+            'Vorlauf: {temp1}°C, Rücklauf: {temp2}°C',
+            'Heater {state} (Mode: {mode})',
+            'Tank sensor detected: {tank} L ({percent}%)',
+            'WiFi RSSI: {rssi} dBm',
+            'Uptime: {uptime}',
+            'Switch #{count}: Heater {switch_state}',
+            'Automatic control: Temp = {temp}°C',
+            'Schedule active: {schedule}',
+            'Frost protection: {frost_state}'
+        ];
+        
+        function startDemoLogs() {
+            if (!isLocalMode) return;
+            
+            // Initial boot logs
+            appendSerialLog('// WebSocket verbunden\n', '#27ae60');
+            setTimeout(() => appendSerialLog('=== ESP32 Heater Control v2.1.0-demo ===\n'), 500);
+            setTimeout(() => appendSerialLog('LittleFS mounted\n'), 700);
+            setTimeout(() => appendSerialLog('Found 2 DS18B20 sensor(s)\n'), 900);
+            setTimeout(() => appendSerialLog('WiFi connected: Demo-Network\n'), 1100);
+            setTimeout(() => appendSerialLog('IP address: 192.168.1.100\n'), 1300);
+            setTimeout(() => appendSerialLog('mDNS responder started: heater.local\n'), 1500);
+            setTimeout(() => appendSerialLog('NTP time synced!\n'), 1700);
+            setTimeout(() => appendSerialLog('WebSocket initialized at /ws\n'), 1900);
+            setTimeout(() => appendSerialLog('OTA initialized at /update\n'), 2100);
+            setTimeout(() => appendSerialLog('Web server started\n'), 2300);
+            setTimeout(() => appendSerialLog('=== Setup complete ===\n\n'), 2500);
+            
+            // Periodic logs every 5-10 seconds
+            demoLogInterval = setInterval(() => {
+                const rand = Math.random();
+                
+                if (rand < 0.3) {
+                    // Temperature log
+                    appendSerialLog(`Vorlauf: ${currentState.tempVorlauf.toFixed(1)}°C, Rücklauf: ${currentState.tempRuecklauf.toFixed(1)}°C\n`);
+                } else if (rand < 0.5) {
+                    // Status log
+                    appendSerialLog(`Heater ${currentState.heating ? 'ON' : 'OFF'} (Mode: ${currentState.mode})\n`);
+                } else if (rand < 0.6 && currentState.tankAvailable) {
+                    // Tank log
+                    appendSerialLog(`Tank: ${currentState.tankLiters.toFixed(1)} L (${currentState.tankPercent}%)\n`);
+                } else if (rand < 0.7) {
+                    // WiFi log
+                    appendSerialLog(`WiFi RSSI: ${currentState.rssi} dBm\n`);
+                } else if (rand < 0.85) {
+                    // Efficiency log
+                    if (currentState.tempDiff !== null) {
+                        appendSerialLog(`ΔT = ${currentState.tempDiff.toFixed(1)}°C, Efficiency: ${Math.round(currentState.efficiency)}%\n`);
+                    }
+                } else {
+                    // Stats log
+                    const hours = Math.floor(currentState.uptime / 3600);
+                    const minutes = Math.floor((currentState.uptime % 3600) / 60);
+                    appendSerialLog(`Uptime: ${hours}h ${minutes}m | Switches: ${currentState.todaySwitches} today, ${currentState.switchCount} total\n`);
+                }
+            }, 5000 + Math.random() * 5000); // Random interval between 5-10 seconds
         }
         
         function startSimulation() {
@@ -1001,6 +1155,7 @@
                 
                 const data = await response.json();
                 currentState = {
+                    version: data.version || 'v0.0.0',
                     tempVorlauf: data.tempVorlauf,
                     tempRuecklauf: data.tempRuecklauf,
                     heating: data.heating,
@@ -1038,6 +1193,9 @@
         }
         
         function updateUI() {
+            // Version
+            document.getElementById('versionBadge').textContent = currentState.version;
+            
             // Temperatures
             const vl = document.getElementById('tempVorlauf');
             const rl = document.getElementById('tempRuecklauf');
@@ -1190,6 +1348,10 @@
                         body: JSON.stringify({ mode: mode })
                     });
                 } catch (e) { console.error(e); }
+            } else {
+                // Demo log
+                const modeNames = { manual: 'Manual', auto: 'Automatic', schedule: 'Schedule' };
+                appendSerialLog(`Mode changed to: ${modeNames[mode]}\n`, '#3498db');
             }
         }
         
@@ -1206,6 +1368,9 @@
                         headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
                     });
                 } catch (e) { console.error(e); }
+            } else {
+                // Demo log
+                appendSerialLog(`Manual toggle: Heater ${currentState.heating ? 'ON' : 'OFF'}\n`, '#e67e22');
             }
         }
         
@@ -1318,12 +1483,249 @@
             updateUI();
         }
         
+        // ========== SERIAL MONITOR (WebSocket) ==========
+        let ws = null;
+        let wsReconnectTimer = null;
+        
+        function connectWebSocket() {
+            if (isLocalMode) return;
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                appendSerialLog('// WebSocket verbunden\n', '#27ae60');
+            };
+            
+            ws.onmessage = (event) => {
+                appendSerialLog(event.data);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
+                
+                // Reconnect after 3 seconds
+                if (!wsReconnectTimer) {
+                    wsReconnectTimer = setTimeout(() => {
+                        wsReconnectTimer = null;
+                        connectWebSocket();
+                    }, 3000);
+                }
+            };
+        }
+        
+        function appendSerialLog(message, color = '#d4d4d4') {
+            const monitor = document.getElementById('serialMonitor');
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.textContent = message.replace(/\n$/, '');
+            
+            // Remove first child if buffer is too large (> 200 lines)
+            if (monitor.children.length > 200) {
+                monitor.removeChild(monitor.firstChild);
+            }
+            
+            monitor.appendChild(line);
+            
+            // Auto-scroll if enabled
+            if (document.getElementById('serialAutoScroll').checked) {
+                monitor.scrollTop = monitor.scrollHeight;
+            }
+        }
+        
+        function clearSerialMonitor() {
+            document.getElementById('serialMonitor').innerHTML = '<div style="color: #608b4e;">// Log gelöscht</div>';
+        }
+        
+        // ========== OTA FIRMWARE UPLOAD ==========
+        async function uploadFirmware(event) {
+            event.preventDefault();
+            
+            if (isLocalMode) {
+                alert('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus.');
+                return;
+            }
+            
+            const fileInput = document.getElementById('firmwareFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Bitte wähle eine .bin Datei aus.');
+                return;
+            }
+            
+            if (!file.name.endsWith('.bin')) {
+                alert('Bitte wähle eine .bin Datei aus.');
+                return;
+            }
+            
+            const uploadBtn = document.getElementById('uploadBtn');
+            const progressContainer = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('uploadProgressBar');
+            const statusText = document.getElementById('uploadStatus');
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '⏳ Wird hochgeladen...';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            statusText.textContent = 'Bereite Upload vor...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('update', file);
+                
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = percentComplete + '%';
+                        progressBar.textContent = percentComplete + '%';
+                        statusText.textContent = `Hochgeladen: ${(e.loaded / 1024 / 1024).toFixed(1)} MB von ${(e.total / 1024 / 1024).toFixed(1)} MB`;
+                    }
+                });
+                
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        statusText.textContent = '✅ Upload erfolgreich! ESP32 wird neu gestartet...';
+                        statusText.style.color = '#27ae60';
+                        
+                        setTimeout(() => {
+                            alert('Firmware wurde erfolgreich hochgeladen!\n\nDer ESP32 startet jetzt neu.\nBitte warte ca. 10 Sekunden und lade die Seite neu.');
+                            location.reload();
+                        }, 2000);
+                    } else {
+                        throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    throw new Error('Netzwerkfehler beim Upload');
+                });
+                
+                xhr.open('POST', '/update');
+                xhr.send(formData);
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Fehler beim Upload: ' + error.message);
+                
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '📤 Firmware hochladen';
+                progressContainer.style.display = 'none';
+                statusText.textContent = '';
+                statusText.style.color = '#7f8c8d';
+            }
+        }
+        
+        // ========== OTA FRONTEND/LITTLEFS UPLOAD ==========
+        async function uploadFrontend(event) {
+            event.preventDefault();
+            
+            if (isLocalMode) {
+                alert('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus.');
+                return;
+            }
+            
+            const fileInput = document.getElementById('frontendFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Bitte wähle eine .bin Datei aus.');
+                return;
+            }
+            
+            if (!file.name.endsWith('.bin')) {
+                alert('Bitte wähle eine littlefs.bin Datei aus.');
+                return;
+            }
+            
+            const uploadBtn = document.getElementById('uploadBtnFS');
+            const progressContainer = document.getElementById('uploadProgressFS');
+            const progressBar = document.getElementById('uploadProgressBarFS');
+            const statusText = document.getElementById('uploadStatusFS');
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '⏳ Wird hochgeladen...';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            statusText.textContent = 'Bereite Frontend-Upload vor...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('update', file);
+                
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = percentComplete + '%';
+                        progressBar.textContent = percentComplete + '%';
+                        statusText.textContent = `Hochgeladen: ${(e.loaded / 1024).toFixed(1)} KB von ${(e.total / 1024).toFixed(1)} KB`;
+                    }
+                });
+                
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        statusText.textContent = '✅ Frontend-Upload erfolgreich! ESP32 wird neu gestartet...';
+                        statusText.style.color = '#27ae60';
+                        
+                        setTimeout(() => {
+                            alert('Frontend (HTML/CSS/JS) wurde erfolgreich hochgeladen!\n\nDer ESP32 startet jetzt neu.\nBitte warte ca. 10 Sekunden und lade die Seite neu.');
+                            location.reload();
+                        }, 2000);
+                    } else {
+                        throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    throw new Error('Netzwerkfehler beim Upload');
+                });
+                
+                xhr.open('POST', '/update-fs');
+                xhr.send(formData);
+                
+            } catch (error) {
+                console.error('Frontend upload error:', error);
+                alert('Fehler beim Frontend-Upload: ' + error.message);
+                
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '📤 Frontend hochladen';
+                progressContainer.style.display = 'none';
+                statusText.textContent = '';
+                statusText.style.color = '#7f8c8d';
+            }
+        }
+        
+        // ========== INITIALIZATION ==========
         setInterval(() => { if (!isLocalMode) updateStatus(); }, 1000);
         
         detectMode();
         updateConnectionStatus(true);
         updateUI();
-        if (!isLocalMode) updateStatus();
+        if (!isLocalMode) {
+            updateStatus();
+            connectWebSocket();
+        } else {
+            // Start demo logs in local mode
+            startDemoLogs();
+        }
     </script>
 </body>
 </html>

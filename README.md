@@ -1,34 +1,45 @@
 # ESP32 Heizungssteuerung - Web UI
 
+**Version: 2.2.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
+
 Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mit Web-Interface.
 
 ## 📸 Dashboard
 
 ### Automatik-Modus (Hysterese)
-![Dashboard - Automatik-Modus](data/screencapture.png)
+![Dashboard - Automatik-Modus](screencapture.png)
 
 **Temperaturbasierte Regelung** mit konfigurierbarer Hysterese:
-- 🌡️ **Dual-Temperatur**: Vorlauf (rot) & Rücklauf (orange) in Echtzeit
-- 📊 **Effizienz-Anzeige**: Temperatur-Differenz & Performance-Meter
-- ⚙️ **Einstellbare Schwellwerte**: EIN-Temperatur (30°C) / AUS-Temperatur (40°C)
+- **Dual-Temperatur**: Vorlauf (rot) & Rücklauf (orange) in Echtzeit
+- **Effizienz-Anzeige**: Temperatur-Differenz & Performance-Meter
+- **Einstellbare Schwellwerte**: EIN-Temperatur (30°C) / AUS-Temperatur (40°C)
 
 ### Zeitplan-Modus
-![Dashboard - Zeitplan-Modus](data/screencapture-3.png)
+![Dashboard - Zeitplan-Modus](screencapture-3.png)
 
 **Zeitbasierte Steuerung** mit bis zu 4 Zeitfenstern:
-- ⏰ **4 individuelle Zeitfenster**: z.B. 05:30 - 23:30 Uhr
-- 🌙 **Übernacht-Support**: Zeitfenster über Mitternacht möglich
-- ☑️ **Einzeln aktivierbar**: Jedes Fenster kann separat ein-/ausgeschaltet werden
+- **4 individuelle Zeitfenster**: z.B. 05:30 - 23:30 Uhr
+- **Übernacht-Support**: Zeitfenster über Mitternacht möglich
+- **Einzeln aktivierbar**: Jedes Fenster kann separat ein-/ausgeschaltet werden
+
+### Demo-Modus & Monitoring
+![Dashboard - Demo-Modus mit Serial Monitor](screencapture-4.png)
+
+**Lokales Testen und Live-Debugging**:
+- **Demo-Modus**: Vollständig funktionsfähig ohne Hardware (lokales Testing)
+- **Serial Monitor**: Live-Logs im Dashboard per WebSocket
+- **OTA Updates**: Firmware UND Frontend drahtlos hochladen
+- **Versionsanzeige**: Aktuelle Firmware-Version im Header (v2.2.0)
 
 ### Weitere Features
-![Dashboard - Weitere Ansicht](data/screencapture-2.png)
+![Dashboard - Weitere Ansicht](screencapture-2.png)
 
 **Umfassende Monitoring-Funktionen**:
-- 📈 **Statistik**: Schalt-Counter (heute/gesamt), Laufzeiten (ON/OFF)
-- ❄️ **Frostschutz**: Automatische Mindesttemperatur-Überwachung
-- 📡 **System-Info**: WiFi-Signal, Betriebszeit, NTP-Status
-- 🎛️ **3 Modi**: Manuell, Automatik (Hysterese), Zeitplan
-- 📱 **Responsive**: Optimiert für Desktop & Mobile
+- **Statistik**: Schalt-Counter (heute/gesamt), Laufzeiten (ON/OFF)
+- **Frostschutz**: Automatische Mindesttemperatur-Überwachung
+- **System-Info**: WiFi-Signal, Betriebszeit, NTP-Status
+- **3 Modi**: Manuell, Automatik (Hysterese), Zeitplan
+- **Responsive**: Optimiert für Desktop & Mobile
 
 ## 📋 Features
 
@@ -61,6 +72,10 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 - ✅ **Professionelles Dashboard-Design**
 - ✅ **Responsive**: Funktioniert auf Desktop & Mobile
 - ✅ **Demo-Modus**: Lokales Testen ohne Hardware möglich
+- ✅ **Versionsanzeige**: Aktuelle Firmware-Version im Header
+- ✅ **OTA Updates**: Firmware UND Frontend drahtlos über WLAN aktualisieren
+- ✅ **Dual-OTA**: Separate Upload-Interfaces für C++ Code und HTML/CSS/JS
+- ✅ **Serial Monitor**: Live-Logs im Dashboard per WebSocket
 
 ## 🔌 Hardware
 
@@ -68,7 +83,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 
 | Komponente | Anzahl | Beschreibung |
 |------------|--------|--------------|
-| **ESP32 DevKit V1 (WROOM-32) USB-C** | 1x | Mikrocontroller mit WiFi & Bluetooth |
+| **ESP32 DevKit V1 (WROOM-32) USB-C (30 PIN)** | 1x | Mikrocontroller mit WiFi & Bluetooth |
 | **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
 | **JSN-SR04T Ultraschall-Sensor** (wasserdicht) | 1x | Tankfüllstand-Messung (optional) |
 | **1-Kanal Relais-Modul** (Active-Low) | 1x | Heizungsschaltung (bis 10A) |
@@ -153,6 +168,34 @@ pio run -t uploadfs
 pio device monitor
 ```
 
+### 6. OTA Updates (nach erstem Flash)
+
+Nach dem ersten Upload über USB kannst du **alle zukünftigen Updates drahtlos** durchführen:
+
+**Für Firmware-Updates (C++ Code):**
+```bash
+# 1. Kompilieren
+pio run
+
+# 2. Im Dashboard → "🔧 Firmware Update (OTA)"
+#    → Datei wählen: .pio/build/esp32dev/firmware.bin
+#    → "Firmware hochladen" klicken
+#    → ESP32 startet automatisch neu (~10 Sekunden)
+```
+
+**Für Frontend-Updates (HTML/CSS/JS):**
+```bash
+# 1. LittleFS kompilieren
+pio run -t buildfs
+
+# 2. Im Dashboard → "🎨 Frontend Update (OTA)"
+#    → Datei wählen: .pio/build/esp32dev/littlefs.bin
+#    → "Frontend hochladen" klicken
+#    → ESP32 startet automatisch neu (~10 Sekunden)
+```
+
+**💡 Vorteil:** Nach dem ersten USB-Flash kannst du **beide Updates komplett über WLAN** durchführen! Perfekt für fest verbaute Systeme.
+
 ## 🌐 Verwendung
 
 ### Normalbetrieb (WiFi verbunden)
@@ -211,6 +254,7 @@ Liefert aktuellen Status:
 
 ```json
 {
+  "version": "v2.2.0",
   "tempVorlauf": 48.5,
   "tempRuecklauf": 35.5,
   "heating": true,
@@ -343,7 +387,18 @@ In `src/main.cpp`:
 #define TIMEZONE "CET-1CEST,M3.5.0,M10.5.0/3"  // Europe/Berlin
 ```
 
-## 📊 Serial Monitor Ausgaben
+## 📊 Serial Monitor & Debugging
+
+### Im Dashboard (WebSocket)
+
+Das Dashboard enthält einen **Live Serial Monitor** mit WebSocket-Verbindung:
+- Zeigt alle `Serial.print()` Ausgaben in Echtzeit
+- Auto-Scroll (umschaltbar)
+- Buffer: Letzte 50 Zeilen auf ESP32, 200 im Browser
+- Automatische Wiederverbindung bei Netzwerkfehlern
+- Erreichbar unter: `ws://heater.local/ws` oder `ws://192.168.1.100/ws`
+
+### Über USB (Terminal)
 
 Bei erfolgreichem Start solltest du sehen:
 
@@ -390,13 +445,25 @@ Current temperature: 22.5°C
 
 Dieses Projekt ist frei verwendbar für private und kommerzielle Zwecke.
 
-## 🔮 Geplante Erweiterungen (optional)
+## ✅ Implementierte Features (v2.2.0)
 
-- [ ] Zeitpläne (Scheduler mit NTP-Zeit)
-- [ ] Temperatur-Schwellwerte (automatische Regelung)
-- [ ] Logging / Statistiken
-- [ ] OTA-Updates (Over-The-Air)
-- [ ] Telegram-Bot Integration
+Alle wichtigen Features sind implementiert:
+
+- ✅ **Zeitpläne (Scheduler)** - Bis zu 4 Zeitfenster mit NTP-Zeit
+- ✅ **Temperatur-Schwellwerte (Hysterese)** - Automatische Regelung
+- ✅ **Logging / Statistiken** - Schalt-Counter, Laufzeiten, Serial Monitor
+- ✅ **OTA-Updates (Over-The-Air)** - Firmware UND Frontend drahtlos
+- ✅ **Dual-Temperatur** - Vorlauf & Rücklauf mit Effizienz-Berechnung
+- ✅ **Frostschutz** - Automatische Mindesttemperatur
+- ✅ **Tankfüllstand** - JSN-SR04T Ultraschall-Sensor (optional)
+- ✅ **Serial Monitor** - Live-Logs per WebSocket im Dashboard
+
+## 🔮 Mögliche Erweiterungen
+
+- [ ] Telegram/WhatsApp-Bot für Benachrichtigungen
+- [ ] Grafana/InfluxDB Integration für Langzeit-Statistiken
+- [ ] Mehrere Heizkreise parallel
+- [ ] Externe Wetterdaten-Integration
 
 ---
 

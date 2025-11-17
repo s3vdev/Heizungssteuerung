@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <ESPAsyncWebServer.h>
+#include <Update.h>
 #include <LittleFS.h>
 #include <time.h>
 #include <Preferences.h>
@@ -17,6 +18,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
+#define FIRMWARE_VERSION "v2.2.0"     // Version anzeigen im Dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -31,6 +33,7 @@
 
 // ========== GLOBAL OBJECTS ==========
 AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");  // WebSocket for Serial Monitor
 Preferences prefs;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -89,6 +92,48 @@ unsigned long lastTempRead = 0;
 unsigned long lastTankRead = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
+
+// ========== SERIAL MONITOR (WebSocket) ==========
+#define LOG_BUFFER_SIZE 50
+String logBuffer[LOG_BUFFER_SIZE];
+int logBufferIndex = 0;
+int logBufferCount = 0;
+
+// Custom print function that sends to both Serial and WebSocket
+void serialLog(const char* message) {
+    Serial.print(message);
+    
+    // Add to buffer
+    logBuffer[logBufferIndex] = String(message);
+    logBufferIndex = (logBufferIndex + 1) % LOG_BUFFER_SIZE;
+    if (logBufferCount < LOG_BUFFER_SIZE) logBufferCount++;
+    
+    // Send to all WebSocket clients
+    if (ws.count() > 0) {
+        ws.textAll(message);
+    }
+}
+
+void serialLogLn(const char* message) {
+    serialLog(message);
+    serialLog("\n");
+}
+
+// WebSocket event handler
+void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 
+                     AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    if (type == WS_EVT_CONNECT) {
+        Serial.printf("WebSocket client #%u connected\n", client->id());
+        
+        // Send log history to new client
+        for (int i = 0; i < logBufferCount; i++) {
+            int idx = (logBufferIndex - logBufferCount + i + LOG_BUFFER_SIZE) % LOG_BUFFER_SIZE;
+            client->text(logBuffer[idx]);
+        }
+    } else if (type == WS_EVT_DISCONNECT) {
+        Serial.printf("WebSocket client #%u disconnected\n", client->id());
+    }
+}
 
 // ========== RELAY CONTROL (Active-Low) ==========
 void setHeater(bool on, bool saveToNVS = true) {
@@ -542,6 +587,7 @@ void setupWebServer() {
         doc["apMode"] = state.apModeActive;
         doc["uptime"] = state.uptime;
         doc["ntpSynced"] = state.ntpSynced;
+        doc["version"] = FIRMWARE_VERSION;
         
         // Current time
         int hour, minute;
@@ -760,6 +806,88 @@ void setupWebServer() {
         request->send(404, "text/plain", "Not found");
     });
     
+    // Initialize WebSocket for Serial Monitor
+    ws.onEvent(onWebSocketEvent);
+    server.addHandler(&ws);
+    Serial.println("WebSocket initialized at /ws");
+    
+    // Initialize OTA Updates (custom handler)
+    server.on("/update", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {
+            bool shouldReboot = !Update.hasError();
+            AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", 
+                shouldReboot ? "OK" : "FAIL");
+            response->addHeader("Connection", "close");
+            request->send(response);
+            
+            if (shouldReboot) {
+                Serial.println("OTA Update successful, rebooting...");
+                delay(1000);
+                ESP.restart();
+            }
+        },
+        [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+            if (!index) {
+                Serial.printf("OTA Update Start: %s\n", filename.c_str());
+                if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
+                    Update.printError(Serial);
+                }
+            }
+            if (!Update.hasError()) {
+                if (Update.write(data, len) != len) {
+                    Update.printError(Serial);
+                }
+            }
+            if (final) {
+                if (Update.end(true)) {
+                    Serial.printf("OTA Update Success: %u bytes\n", index + len);
+                } else {
+                    Update.printError(Serial);
+                }
+            }
+        }
+    );
+    Serial.println("OTA initialized at /update");
+    
+    // Initialize LittleFS OTA Updates (for HTML/CSS/JS)
+    server.on("/update-fs", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {
+            bool shouldReboot = !Update.hasError();
+            AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", 
+                shouldReboot ? "OK" : "FAIL");
+            response->addHeader("Connection", "close");
+            request->send(response);
+            
+            if (shouldReboot) {
+                Serial.println("LittleFS OTA Update successful, rebooting...");
+                delay(1000);
+                ESP.restart();
+            }
+        },
+        [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+            if (!index) {
+                Serial.printf("LittleFS OTA Start: %s\n", filename.c_str());
+                // UPDATE_TYPE_FILESYSTEM = U_SPIFFS
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+                    Update.printError(Serial);
+                }
+            }
+            if (!Update.hasError()) {
+                if (Update.write(data, len) != len) {
+                    Update.printError(Serial);
+                }
+            }
+            if (final) {
+                if (Update.end(true)) {
+                    Serial.printf("LittleFS OTA Success: %u bytes\n", index + len);
+                } else {
+                    Update.printError(Serial);
+                }
+            }
+        }
+    );
+    Serial.println("LittleFS OTA initialized at /update-fs");
+    
     server.begin();
     Serial.println("Web server started");
 }
@@ -879,6 +1007,9 @@ void loop() {
         Serial.println("WiFi lost, reconnecting...");
         setupWiFi();
     }
+    
+    // Cleanup disconnected WebSocket clients
+    ws.cleanupClients();
     
     delay(10);
 }
