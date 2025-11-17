@@ -1,6 +1,6 @@
 # ESP32 Heizungssteuerung - Web UI
 
-**Version: 2.2.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
+**Version: 2.3.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
 
 Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mit Web-Interface.
 
@@ -67,6 +67,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 - ✅ **Temperatur-Differenz & Effizienz**: Vorlauf-Rücklauf-Analyse
 - ✅ **Schalt-Statistiken**: Zähler für tägliche/gesamte Schaltvorgänge
 - ✅ **Laufzeit-Tracking**: ON/OFF-Zeiten
+- ✅ **Wetter-Widget**: Open-Meteo API mit Standort-Eingabe (Stadt/PLZ), Geocoding
 
 ### Interface
 - ✅ **Professionelles Dashboard-Design**
@@ -445,7 +446,7 @@ Current temperature: 22.5°C
 
 Dieses Projekt ist frei verwendbar für private und kommerzielle Zwecke.
 
-## ✅ Implementierte Features (v2.2.0)
+## ✅ Implementierte Features (v2.3.0)
 
 Alle wichtigen Features sind implementiert:
 
@@ -457,13 +458,13 @@ Alle wichtigen Features sind implementiert:
 - ✅ **Frostschutz** - Automatische Mindesttemperatur
 - ✅ **Tankfüllstand** - JSN-SR04T Ultraschall-Sensor (optional)
 - ✅ **Serial Monitor** - Live-Logs per WebSocket im Dashboard
+- ✅ **Wetter-Widget** - Open-Meteo API mit Standort-Eingabe (Stadt/PLZ)
 
 ## 🔮 Mögliche Erweiterungen
 
 - [ ] Telegram/WhatsApp-Bot für Benachrichtigungen
 - [ ] Grafana/InfluxDB Integration für Langzeit-Statistiken
 - [ ] Mehrere Heizkreise parallel
-- [ ] Externe Wetterdaten-Integration
 
 ---
 
