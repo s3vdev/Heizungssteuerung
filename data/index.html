@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Heizungssteuerung</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -149,6 +150,12 @@
             font-size: 16px;
             font-weight: 600;
             color: #2c3e50;
+        }
+        
+        .card-subtitle {
+            font-size: 12px;
+            color: #95a5a6;
+            font-weight: 500;
         }
         
         .card-badge {
@@ -536,6 +543,261 @@
             background: #f8f9fa;
         }
         
+        /* Weather Widget */
+        .weather-current {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 0;
+        }
+        
+        .weather-icon {
+            font-size: 64px;
+            line-height: 1;
+        }
+        
+        .weather-temp {
+            font-size: 48px;
+            font-weight: 300;
+            color: #2c3e50;
+        }
+        
+        .weather-desc {
+            font-size: 14px;
+            color: #7f8c8d;
+            text-transform: capitalize;
+        }
+        
+        .weather-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #ecf0f1;
+        }
+        
+        .weather-detail {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        
+        .weather-detail-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .weather-forecast {
+            margin-top: 16px;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border-radius: 8px;
+        }
+        
+        .weather-forecast-title {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .weather-forecast-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .weather-forecast-icon {
+            font-size: 28px;
+            line-height: 1;
+        }
+        
+        .weather-forecast-temp {
+            font-size: 15px;
+            font-weight: 600;
+            color: #2c3e50;
+            min-width: 60px;
+        }
+        
+        .weather-forecast-desc {
+            font-size: 13px;
+            color: #5a6c7d;
+            flex: 1;
+        }
+        
+        .weather-forecast-rain {
+            font-size: 12px;
+            color: #3498db;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .weather-error {
+            text-align: center;
+            padding: 20px;
+            color: #95a5a6;
+            font-size: 14px;
+        }
+        
+        .weather-precipitation-warning {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(52, 152, 219, 0.15);
+            border-left: 3px solid #3498db;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        
+        .weather-cold-warning {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(243, 156, 18, 0.15);
+            border-left: 3px solid #f39c12;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #e67e22;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .weather-update-time {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid #ecf0f1;
+            font-size: 11px;
+            color: #95a5a6;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .toast {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            border-left: 4px solid #3498db;
+        }
+        
+        .toast.success {
+            border-left-color: #11998e;
+        }
+        
+        .toast.error {
+            border-left-color: #e74c3c;
+        }
+        
+        .toast.warning {
+            border-left-color: #f39c12;
+        }
+        
+        .toast.info {
+            border-left-color: #3498db;
+        }
+        
+        .toast-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .toast.success .toast-icon {
+            color: #11998e;
+        }
+        
+        .toast.error .toast-icon {
+            color: #e74c3c;
+        }
+        
+        .toast.warning .toast-icon {
+            color: #f39c12;
+        }
+        
+        .toast.info .toast-icon {
+            color: #3498db;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-message {
+            font-size: 14px;
+            color: #2c3e50;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: #95a5a6;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .toast-close:hover {
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+        
+        .toast.removing {
+            animation: slideOut 0.3s ease-in forwards;
+        }
+        
         /* Responsive */
         @media (max-width: 900px) {
             .container {
@@ -589,6 +851,9 @@
     </style>
 </head>
 <body>
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
     <div class="header">
         <div class="header-left">
             <h1>Heizungssteuerung</h1>
@@ -724,9 +989,45 @@
                 
                 <button class="btn btn-primary" onclick="saveSettings()" style="margin-top: 12px;">Zeitplan speichern</button>
             </div>
+            
+            <!-- NEW: Location Settings Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Standort-Einstellungen</div>
+                </div>
+                
+                <div class="setting-item">
+                    <label class="setting-label">Stadt oder Postleitzahl</label>
+                    <input type="text" class="setting-input" id="locationInput" placeholder="z.B. Berlin oder 10115" value="Köln">
+                </div>
+                
+                <div class="info-box" style="font-size: 12px; margin-top: 12px;" id="locationInfo">
+                    <i class="fas fa-map-marker-alt"></i> Standort für Wetterdaten. Aktuell: <span id="currentLocationName">Köln</span>
+                </div>
+                
+                <button class="btn btn-primary" onclick="saveLocationByName()" style="margin-top: 12px;">
+                    <i class="fas fa-search"></i> Standort suchen & speichern
+                </button>
+                
+                <!-- Hidden fields for actual coordinates -->
+                <input type="hidden" id="latitude" value="50.952149">
+                <input type="hidden" id="longitude" value="7.1229">
+            </div>
         </div>
 
         <div class="right-column">
+            <!-- NEW: Weather Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🌤️ Wetter</div>
+                    <div class="card-subtitle" id="weatherLocation" style="font-size: 12px; color: #95a5a6;">Wohnhaus</div>
+                </div>
+                
+                <div id="weatherContent">
+                    <div class="weather-error">Lade Wetterdaten...</div>
+                </div>
+            </div>
+            
             <!-- NEW: Statistics Card -->
             <div class="card">
                 <div class="card-header">
@@ -938,6 +1239,39 @@
     </div>
 
     <script>
+        // ========== TOAST NOTIFICATION SYSTEM ==========
+        function showToast(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            // Icon based on type
+            const icons = {
+                success: '<i class="fas fa-check-circle"></i>',
+                error: '<i class="fas fa-exclamation-circle"></i>',
+                warning: '<i class="fas fa-exclamation-triangle"></i>',
+                info: '<i class="fas fa-info-circle"></i>'
+            };
+            
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type]}</div>
+                <div class="toast-content">
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto remove after duration
+            if (duration > 0) {
+                setTimeout(() => {
+                    toast.classList.add('removing');
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+        }
+        
         const MAX_SCHEDULES = 4;
         
         let currentState = {
@@ -966,7 +1300,10 @@
             tankLiters: null,
             tankPercent: null,
             tankHeight: 100,
-            tankCapacity: 1000
+            tankCapacity: 1000,
+            latitude: 50.952149,
+            longitude: 7.1229,
+            weather: null
         };
         
         let isLocalMode = false;
@@ -993,7 +1330,7 @@
                 document.getElementById('demoBadge').classList.add('active');
                 document.getElementById('demoControls').classList.add('active');
                 
-                currentState.version = 'v2.1.0-demo';
+                currentState.version = 'v2.3.0-demo';
                 currentState.tempVorlauf = 45.3;
                 currentState.tempRuecklauf = 22.2;
                 currentState.ntpSynced = true;
@@ -1007,8 +1344,73 @@
                 currentState.tankHeight = 100;
                 currentState.tankCapacity = 1000;
                 
+                // Try to load saved location & weather from localStorage
+                const savedLocation = localStorage.getItem('demoLocation');
+                const savedWeather = localStorage.getItem('demoWeather');
+                
+                if (savedLocation && savedWeather) {
+                    // Restore saved data
+                    const locationData = JSON.parse(savedLocation);
+                    const weatherData = JSON.parse(savedWeather);
+                    
+                    currentState.latitude = locationData.latitude;
+                    currentState.longitude = locationData.longitude;
+                    currentState.weather = weatherData;
+                    
+                    console.log('Restored location:', weatherData.locationName);
+                } else {
+                    // Initialize with default weather demo data (Köln)
+                    currentState.weather = {
+                        valid: true,
+                        temperature: 5.1,
+                        weatherCode: 3,  // Bewölkt
+                        humidity: 88,
+                        windSpeed: 12.2,
+                        locationName: 'Köln',
+                        tomorrow: {
+                            tempMin: 0.1,
+                            tempMax: 5.8,
+                            weatherCode: 61,  // Leichter Regen
+                            precipitation: 4.0
+                        }
+                    };
+                }
+                
+                displayWeather();
                 startSimulation();
             }
+        }
+        
+        // WMO Weather Code Mapping
+        function getWeatherInfo(code) {
+            const weatherMap = {
+                0: { icon: '☀️', desc: 'Klar' },
+                1: { icon: '🌤️', desc: 'Überwiegend klar' },
+                2: { icon: '⛅', desc: 'Teilweise bewölkt' },
+                3: { icon: '☁️', desc: 'Bewölkt' },
+                45: { icon: '🌫️', desc: 'Nebel' },
+                48: { icon: '🌫️', desc: 'Nebel' },
+                51: { icon: '🌦️', desc: 'Leichter Regen' },
+                53: { icon: '🌧️', desc: 'Regen' },
+                55: { icon: '🌧️', desc: 'Starker Regen' },
+                61: { icon: '🌦️', desc: 'Leichter Regen' },
+                63: { icon: '🌧️', desc: 'Regen' },
+                65: { icon: '🌧️', desc: 'Starker Regen' },
+                71: { icon: '🌨️', desc: 'Leichter Schneefall' },
+                73: { icon: '🌨️', desc: 'Schneefall' },
+                75: { icon: '🌨️', desc: 'Starker Schneefall' },
+                77: { icon: '🌨️', desc: 'Schneegriesel' },
+                80: { icon: '🌦️', desc: 'Leichte Schauer' },
+                81: { icon: '🌧️', desc: 'Schauer' },
+                82: { icon: '🌧️', desc: 'Starke Schauer' },
+                85: { icon: '🌨️', desc: 'Schneeschauer' },
+                86: { icon: '🌨️', desc: 'Starke Schneeschauer' },
+                95: { icon: '⛈️', desc: 'Gewitter' },
+                96: { icon: '⛈️', desc: 'Gewitter mit Hagel' },
+                99: { icon: '⛈️', desc: 'Starkes Gewitter' }
+            };
+            
+            return weatherMap[code] || { icon: '🌤️', desc: 'Unbekannt' };
         }
         
         // Demo Serial Monitor Logs
@@ -1180,16 +1582,326 @@
                     tankLiters: data.tankLiters,
                     tankPercent: data.tankPercent,
                     tankHeight: data.tankHeight || 100,
-                    tankCapacity: data.tankCapacity || 1000
+                    tankCapacity: data.tankCapacity || 1000,
+                    latitude: data.latitude || 50.952149,
+                    longitude: data.longitude || 7.1229
                 };
                 
                 updateConnectionStatus(true);
+                updateWeather();
             } catch (error) {
                 console.error('Status fetch failed:', error);
                 updateConnectionStatus(false);
             }
             
             updateUI();
+        }
+        
+        async function updateWeather() {
+            if (isLocalMode) {
+                // Use demo weather data
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/weather');
+                if (!response.ok) throw new Error('Weather API failed');
+                
+                const data = await response.json();
+                
+                if (data.valid) {
+                    currentState.weather = data;
+                    displayWeather();
+                } else {
+                    displayWeatherError();
+                }
+            } catch (error) {
+                console.error('Weather fetch failed:', error);
+                displayWeatherError();
+            }
+        }
+        
+        function displayWeather() {
+            if (!currentState.weather || !currentState.weather.valid) {
+                displayWeatherError();
+                return;
+            }
+            
+            const w = currentState.weather;
+            const currentInfo = getWeatherInfo(w.weatherCode);
+            const forecastInfo = getWeatherInfo(w.tomorrow.weatherCode);
+            
+            // Update location name in header and settings info
+            if (w.locationName) {
+                document.getElementById('weatherLocation').textContent = w.locationName;
+                document.getElementById('currentLocationName').textContent = w.locationName;
+            }
+            
+            // Helper: Format temperature (round to integer)
+            const formatTemp = (temp) => Math.round(temp) + '°C';
+            
+            const html = `
+                <div class="weather-current">
+                    <div class="weather-icon">${currentInfo.icon}</div>
+                    <div>
+                        <div class="weather-temp">${formatTemp(w.temperature)}</div>
+                        <div class="weather-desc">${currentInfo.desc}</div>
+                    </div>
+                </div>
+                
+                <div class="weather-details">
+                    <div class="weather-detail">
+                        <i class="fas fa-droplet"></i> Luftfeuchtigkeit:
+                        <span class="weather-detail-value">${w.humidity}%</span>
+                    </div>
+                    <div class="weather-detail">
+                        <i class="fas fa-wind"></i> Wind:
+                        <span class="weather-detail-value">${Math.round(w.windSpeed)} km/h</span>
+                    </div>
+                </div>
+                
+                <div class="weather-forecast">
+                    <div class="weather-forecast-title">
+                        <i class="fas fa-calendar-plus"></i> Morgen
+                    </div>
+                    <div class="weather-forecast-content">
+                        <div class="weather-forecast-icon">${forecastInfo.icon}</div>
+                        <div class="weather-forecast-temp">${Math.round(w.tomorrow.tempMin)}°/${Math.round(w.tomorrow.tempMax)}°C</div>
+                        <div class="weather-forecast-desc">${forecastInfo.desc}</div>
+                        ${w.tomorrow.precipitation > 0 ? `
+                        <div class="weather-forecast-rain"><i class="fas fa-droplet"></i> ${Math.round(w.tomorrow.precipitation)}mm Regen</div>
+                        ` : ''}
+                    </div>
+                </div>
+                ${w.temperature < 10 ? `
+                <div class="weather-cold-warning">
+                    <i class="fas fa-temperature-low"></i> Kalt! Warme Kleidung empfohlen
+                </div>
+                ` : ''}
+                <div class="weather-update-time">
+                    Zuletzt aktualisiert: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </div>
+            `;
+            
+            document.getElementById('weatherContent').innerHTML = html;
+        }
+        
+        function displayWeatherError() {
+            document.getElementById('weatherContent').innerHTML = 
+                '<div class="weather-error">Wetterdaten nicht verfügbar</div>';
+        }
+        
+        // German cities database for demo mode
+        const germanCities = [
+            { name: 'Berlin', plz: '10115', lat: 52.520008, lon: 13.404954 },
+            { name: 'München', plz: '80331', lat: 48.137154, lon: 11.576124 },
+            { name: 'Hamburg', plz: '20095', lat: 53.551086, lon: 9.993682 },
+            { name: 'Köln', plz: '50667', lat: 50.952149, lon: 7.1229 },
+            { name: 'Frankfurt', plz: '60311', lat: 50.110922, lon: 8.682127 },
+            { name: 'Stuttgart', plz: '70173', lat: 48.783333, lon: 9.183333 },
+            { name: 'Düsseldorf', plz: '40210', lat: 51.227741, lon: 6.773456 },
+            { name: 'Dortmund', plz: '44135', lat: 51.514244, lon: 7.468429 },
+            { name: 'Essen', plz: '45127', lat: 51.455643, lon: 7.011555 },
+            { name: 'Leipzig', plz: '04109', lat: 51.340333, lon: 12.360103 },
+            { name: 'Bremen', plz: '28195', lat: 53.079296, lon: 8.801694 },
+            { name: 'Dresden', plz: '01067', lat: 51.050407, lon: 13.737262 },
+            { name: 'Hannover', plz: '30159', lat: 52.375892, lon: 9.732010 },
+            { name: 'Nürnberg', plz: '90402', lat: 49.453872, lon: 11.077298 },
+            { name: 'Bonn', plz: '53111', lat: 50.735851, lon: 7.101674 }
+        ];
+        
+        // Simple location name lookup for demo mode
+        function getDemoLocationName(lat, lon) {
+            // Find closest city
+            let closest = germanCities[0];
+            let minDist = Math.sqrt(Math.pow(lat - closest.lat, 2) + Math.pow(lon - closest.lon, 2));
+            
+            for (let loc of germanCities) {
+                const dist = Math.sqrt(Math.pow(lat - loc.lat, 2) + Math.pow(lon - loc.lon, 2));
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = loc;
+                }
+            }
+            
+            return closest.name;
+        }
+        
+        // Find location by name or PLZ (demo mode)
+        function findLocationByName(query) {
+            query = query.toLowerCase().trim();
+            
+            // Try exact match first
+            for (let loc of germanCities) {
+                if (loc.name.toLowerCase() === query || loc.plz === query) {
+                    return loc;
+                }
+            }
+            
+            // Try partial match
+            for (let loc of germanCities) {
+                if (loc.name.toLowerCase().includes(query)) {
+                    return loc;
+                }
+            }
+            
+            return null;
+        }
+        
+        // NEW: Save location by city name or PLZ
+        async function saveLocationByName() {
+            const locationInput = document.getElementById('locationInput').value.trim();
+            
+            if (!locationInput) {
+                showToast('Bitte gib eine Stadt oder Postleitzahl ein', 'warning');
+                return;
+            }
+            
+            if (isLocalMode) {
+                // Demo mode: Try to geocode using Nominatim API (if available)
+                showToast('Suche Standort...', 'info', 2000);
+                
+                try {
+                    const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationInput)}&format=json&limit=1&countrycodes=de&accept-language=de`;
+                    
+                    const response = await fetch(geocodeUrl, {
+                        headers: { 'User-Agent': 'HeizungssteuerungDemo/2.3.0' }
+                    });
+                    
+                    if (!response.ok) throw new Error('Geocoding failed');
+                    
+                    const data = await response.json();
+                    
+                    if (!data || data.length === 0) {
+                        showToast('Standort nicht gefunden: ' + locationInput, 'error');
+                        return;
+                    }
+                    
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lon = parseFloat(result.lon);
+                    const displayName = result.display_name.split(',')[0]; // Get city name only
+                    
+                    // Update hidden fields
+                    document.getElementById('latitude').value = lat;
+                    document.getElementById('longitude').value = lon;
+                    
+                    // Update state
+                    currentState.latitude = lat;
+                    currentState.longitude = lon;
+                    
+                    // Fetch REAL weather data for this location (not just simulated!)
+                    try {
+                        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=Europe/Berlin&forecast_days=2`;
+                        
+                        const weatherResponse = await fetch(weatherUrl);
+                        
+                        if (weatherResponse.ok) {
+                            const weatherData = await weatherResponse.json();
+                            
+                            // Update weather with REAL data
+                            currentState.weather = {
+                                valid: true,
+                                temperature: weatherData.current.temperature_2m,
+                                weatherCode: weatherData.current.weather_code,
+                                humidity: weatherData.current.relative_humidity_2m,
+                                windSpeed: weatherData.current.wind_speed_10m,
+                                locationName: displayName,
+                                tomorrow: {
+                                    tempMin: weatherData.daily.temperature_2m_min[1],
+                                    tempMax: weatherData.daily.temperature_2m_max[1],
+                                    weatherCode: weatherData.daily.weather_code[1],
+                                    precipitation: weatherData.daily.precipitation_sum[1]
+                                }
+                            };
+                            
+                            displayWeather();
+                            
+                            // Save to localStorage (Demo-Modus)
+                            localStorage.setItem('demoLocation', JSON.stringify({
+                                latitude: lat,
+                                longitude: lon
+                            }));
+                            localStorage.setItem('demoWeather', JSON.stringify(currentState.weather));
+                            
+                            showToast('Standort & Wetter gespeichert: ' + displayName, 'success', 4000);
+                        } else {
+                            throw new Error('Weather API failed');
+                        }
+                    } catch (weatherError) {
+                        console.error('Failed to fetch weather:', weatherError);
+                        // Fallback to simulated weather
+                        if (currentState.weather) {
+                            currentState.weather.locationName = displayName;
+                            const tempVariation = (lat - 50) * 0.3;
+                            currentState.weather.temperature = 5.1 + tempVariation;
+                            displayWeather();
+                            
+                            // Save to localStorage anyway
+                            localStorage.setItem('demoLocation', JSON.stringify({
+                                latitude: lat,
+                                longitude: lon
+                            }));
+                            localStorage.setItem('demoWeather', JSON.stringify(currentState.weather));
+                        }
+                        showToast('⚠️ Standort gespeichert: ' + displayName + ' (Wetter simuliert, bleibt nach Reload!)', 'warning', 4000);
+                    }
+                    
+                    // Update input field to show clean city name
+                    document.getElementById('locationInput').value = displayName;
+                } catch (error) {
+                    console.error('Geocoding error:', error);
+                    showToast('Fehler beim Suchen des Standorts. Bitte Internetverbindung prüfen.', 'error');
+                }
+                
+                return;
+            }
+            
+            // Real mode: call backend geocoding API
+            try {
+                // First, geocode the location name
+                const geocodeResponse = await fetch(`/api/geocode?query=${encodeURIComponent(locationInput)}`);
+                
+                if (!geocodeResponse.ok) throw new Error('Geocoding failed');
+                
+                const geocodeData = await geocodeResponse.json();
+                
+                if (!geocodeData.found) {
+                    showToast('Standort nicht gefunden: ' + locationInput, 'error');
+                    return;
+                }
+                
+                // Update hidden fields
+                document.getElementById('latitude').value = geocodeData.latitude;
+                document.getElementById('longitude').value = geocodeData.longitude;
+                
+                // Save to backend
+                const response = await fetch('/api/location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Basic ' + btoa('admin:admin')
+                    },
+                    body: JSON.stringify({ 
+                        latitude: geocodeData.latitude, 
+                        longitude: geocodeData.longitude 
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to save location');
+                
+                const data = await response.json();
+                showToast('Standort & Wetter gespeichert: ' + geocodeData.displayName, 'success', 4000);
+                
+                // Update input field
+                document.getElementById('locationInput').value = geocodeData.displayName;
+                
+                // Update weather immediately
+                setTimeout(() => updateWeather(), 1000);
+            } catch (error) {
+                console.error('Failed to save location:', error);
+                showToast('Fehler beim Suchen des Standorts', 'error');
+            }
         }
         
         function updateUI() {
@@ -1298,6 +2010,21 @@
             document.getElementById('uptimeValue').textContent = formatUptime(currentState.uptime);
             document.getElementById('ntpStatus').textContent = currentState.ntpSynced ? 'Synced' : 'Pending';
             document.getElementById('currentTime').textContent = currentState.currentTime || '--:--';
+            
+            // Location settings - only update if fields are not focused (to avoid overwriting user input)
+            const latField = document.getElementById('latitude');
+            const lonField = document.getElementById('longitude');
+            const locationInput = document.getElementById('locationInput');
+            
+            if (document.activeElement !== latField && document.activeElement !== lonField && document.activeElement !== locationInput) {
+                latField.value = currentState.latitude;
+                lonField.value = currentState.longitude;
+                
+                // Update location input with city name if weather data is available
+                if (currentState.weather && currentState.weather.locationName) {
+                    locationInput.value = currentState.weather.locationName;
+                }
+            }
         }
         
         function updateScheduleList() {
@@ -1403,12 +2130,12 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
                         body: JSON.stringify({ tempOn, tempOff, schedules: currentState.schedules })
                     });
-                    alert('Einstellungen gespeichert!');
+                    showToast('Einstellungen gespeichert', 'success');
                 } catch (e) {
-                    alert('Fehler beim Speichern!');
+                    showToast('Fehler beim Speichern', 'error');
                 }
             } else {
-                alert('Einstellungen gespeichert (Demo)');
+                showToast('⚠️ Speichern im Demo-Modus nicht möglich. Nach Reload wieder Standard.', 'warning', 4000);
             }
         }
         
@@ -1428,9 +2155,13 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
                         body: JSON.stringify({ frostEnabled: enabled, frostTemp: temp })
                     });
+                    showToast('Frostschutz gespeichert', 'success');
                 } catch (e) {
                     console.error('Failed to save frost protection:', e);
+                    showToast('Fehler beim Speichern', 'error');
                 }
+            } else {
+                showToast('⚠️ Speichern im Demo-Modus nicht möglich. Nach Reload wieder Standard.', 'warning', 4000);
             }
         }
         
@@ -1448,9 +2179,13 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
                         body: JSON.stringify({ tankHeight: height, tankCapacity: capacity })
                     });
+                    showToast('Tank-Konfiguration gespeichert', 'success');
                 } catch (e) {
                     console.error('Failed to save tank config:', e);
+                    showToast('Fehler beim Speichern', 'error');
                 }
+            } else {
+                showToast('⚠️ Speichern im Demo-Modus nicht möglich. Nach Reload wieder Standard.', 'warning', 4000);
             }
         }
         
@@ -1550,7 +2285,7 @@
             event.preventDefault();
             
             if (isLocalMode) {
-                alert('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus.');
+                showToast('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus', 'warning');
                 return;
             }
             
@@ -1558,12 +2293,12 @@
             const file = fileInput.files[0];
             
             if (!file) {
-                alert('Bitte wähle eine .bin Datei aus.');
+                showToast('Bitte wähle eine .bin Datei aus', 'warning');
                 return;
             }
             
             if (!file.name.endsWith('.bin')) {
-                alert('Bitte wähle eine .bin Datei aus.');
+                showToast('Bitte wähle eine .bin Datei aus', 'warning');
                 return;
             }
             
@@ -1602,8 +2337,8 @@
                         statusText.style.color = '#27ae60';
                         
                         setTimeout(() => {
-                            alert('Firmware wurde erfolgreich hochgeladen!\n\nDer ESP32 startet jetzt neu.\nBitte warte ca. 10 Sekunden und lade die Seite neu.');
-                            location.reload();
+                            showToast('Firmware wurde erfolgreich hochgeladen! Der ESP32 startet neu...', 'success', 5000);
+                            setTimeout(() => location.reload(), 10000);
                         }, 2000);
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
@@ -1619,7 +2354,7 @@
                 
             } catch (error) {
                 console.error('Upload error:', error);
-                alert('Fehler beim Upload: ' + error.message);
+                showToast('Fehler beim Upload: ' + error.message, 'error');
                 
                 uploadBtn.disabled = false;
                 uploadBtn.textContent = '📤 Firmware hochladen';
@@ -1634,7 +2369,7 @@
             event.preventDefault();
             
             if (isLocalMode) {
-                alert('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus.');
+                showToast('OTA Update ist nur auf dem ESP32 verfügbar, nicht im Demo-Modus', 'warning');
                 return;
             }
             
@@ -1642,12 +2377,12 @@
             const file = fileInput.files[0];
             
             if (!file) {
-                alert('Bitte wähle eine .bin Datei aus.');
+                showToast('Bitte wähle eine .bin Datei aus', 'warning');
                 return;
             }
             
             if (!file.name.endsWith('.bin')) {
-                alert('Bitte wähle eine littlefs.bin Datei aus.');
+                showToast('Bitte wähle eine littlefs.bin Datei aus', 'warning');
                 return;
             }
             
@@ -1682,12 +2417,12 @@
                     if (xhr.status === 200) {
                         progressBar.style.width = '100%';
                         progressBar.textContent = '100%';
-                        statusText.textContent = '✅ Frontend-Upload erfolgreich! ESP32 wird neu gestartet...';
+                        statusText.textContent = 'Frontend-Upload erfolgreich! ESP32 wird neu gestartet...';
                         statusText.style.color = '#27ae60';
                         
                         setTimeout(() => {
-                            alert('Frontend (HTML/CSS/JS) wurde erfolgreich hochgeladen!\n\nDer ESP32 startet jetzt neu.\nBitte warte ca. 10 Sekunden und lade die Seite neu.');
-                            location.reload();
+                            showToast('Frontend wurde erfolgreich hochgeladen! Der ESP32 startet neu...', 'success', 5000);
+                            setTimeout(() => location.reload(), 10000);
                         }, 2000);
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
@@ -1703,10 +2438,10 @@
                 
             } catch (error) {
                 console.error('Frontend upload error:', error);
-                alert('Fehler beim Frontend-Upload: ' + error.message);
+                showToast('Fehler beim Frontend-Upload: ' + error.message, 'error');
                 
                 uploadBtn.disabled = false;
-                uploadBtn.textContent = '📤 Frontend hochladen';
+                uploadBtn.textContent = 'Frontend hochladen';
                 progressContainer.style.display = 'none';
                 statusText.textContent = '';
                 statusText.style.color = '#7f8c8d';
