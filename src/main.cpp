@@ -91,6 +91,7 @@ struct SystemState {
     // Weather & Location
     float latitude = 50.952149;         // Default: Cologne
     float longitude = 7.1229;
+    String locationName = "";           // Saved location name (city)
 } state;
 
 // ========== WEATHER CACHE ==========
@@ -117,6 +118,7 @@ struct WeatherData {
 unsigned long lastToggleTime = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastTankRead = 0;
+unsigned long lastWeatherFetch = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
 
@@ -130,6 +132,10 @@ String logBuffer[LOG_BUFFER_SIZE];
 int logBufferIndex = 0;
 int logBufferCount = 0;
 
+// Rate limiting for WebSocket
+unsigned long lastWebSocketSend = 0;
+#define WEBSOCKET_MIN_INTERVAL 100  // Minimum 100ms between sends
+
 // Custom print function that sends to both Serial and WebSocket
 void serialLog(const char* message) {
     Serial.print(message);
@@ -139,9 +145,11 @@ void serialLog(const char* message) {
     logBufferIndex = (logBufferIndex + 1) % LOG_BUFFER_SIZE;
     if (logBufferCount < LOG_BUFFER_SIZE) logBufferCount++;
     
-    // Send to all WebSocket clients
-    if (ws.count() > 0) {
+    // Send to all WebSocket clients with rate limiting
+    unsigned long now = millis();
+    if (ws.count() > 0 && (now - lastWebSocketSend >= WEBSOCKET_MIN_INTERVAL)) {
         ws.textAll(message);
+        lastWebSocketSend = now;
     }
 }
 
@@ -149,6 +157,10 @@ void serialLogLn(const char* message) {
     serialLog(message);
     serialLog("\n");
 }
+
+// ========== TELEGRAM NOTIFICATIONS (FORWARD DECLARATIONS) ==========
+bool isTelegramConfigured();
+void sendTelegramMessage(String message);
 
 // WebSocket event handler
 void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 
@@ -180,7 +192,32 @@ void setHeater(bool on, bool saveToNVS = true) {
     
     state.heatingOn = on;
     // Active-Low: LOW = ON, HIGH = OFF
-    digitalWrite(RELAY_PIN, on ? LOW : HIGH);
+    // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
+    // Use normal OUTPUT for LOW (driven to GND)
+    
+    Serial.print("[Relay] Setting heater to ");
+    Serial.print(on ? "ON" : "OFF");
+    Serial.print(" - GPIO23: ");
+    Serial.println(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+    Serial.flush();
+    
+    if (on) {
+        // Relay ON: Set to LOW using normal OUTPUT mode
+        pinMode(RELAY_PIN, OUTPUT);
+        digitalWrite(RELAY_PIN, LOW);
+    } else {
+        // Relay OFF: Set to HIGH using OPEN-DRAIN mode (floating, pulled up by relay module)
+        pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
+        digitalWrite(RELAY_PIN, HIGH);
+    }
+    
+    // Verify pin state was set correctly
+    delay(50); // Longer delay for relay to respond
+    int actualState = digitalRead(RELAY_PIN);
+    
+    Serial.print("[Relay] GPIO23 read back: ");
+    Serial.println(actualState == LOW ? "LOW" : "HIGH");
+    Serial.flush();
     
     if (saveToNVS && state.mode == "manual") {
         prefs.begin("heater", false);
@@ -188,7 +225,11 @@ void setHeater(bool on, bool saveToNVS = true) {
         prefs.end();
     }
     
-    Serial.printf("Heater %s (Relay: %s)\n", on ? "ON" : "OFF", on ? "LOW" : "HIGH");
+    Serial.print("[Relay] Heater ");
+    Serial.print(on ? "ON" : "OFF");
+    Serial.print(" - GPIO23 actual: ");
+    Serial.println(actualState == LOW ? "LOW" : "HIGH");
+    Serial.flush();
     
     // Send Telegram notification on state change
     if (stateChanged && isTelegramConfigured()) {
@@ -308,7 +349,8 @@ String fetchLocationName(float lat, float lon) {
     HTTPClient http;
     
     // OpenStreetMap Nominatim API (free, no API key needed)
-    String url = "http://nominatim.openstreetmap.org/reverse?";
+    // Use HTTPS to avoid HTTP 301 redirect
+    String url = "https://nominatim.openstreetmap.org/reverse?";
     url += "lat=" + String(lat, 6);
     url += "&lon=" + String(lon, 6);
     url += "&format=json";
@@ -323,7 +365,7 @@ String fetchLocationName(float lat, float lon) {
     
     if (httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
-        JsonDocument doc;
+        StaticJsonDocument<512> doc;
         DeserializationError error = deserializeJson(doc, payload);
         
         if (!error) {
@@ -345,16 +387,10 @@ String fetchLocationName(float lat, float lon) {
 }
 
 // ========== FETCH WEATHER DATA ==========
-void fetchWeatherData() {
+// Internal function to actually fetch weather data (called by fetchWeatherData)
+void doFetchWeatherData(bool forceRefresh = false) {
     // Check if WiFi is connected
     if (WiFi.status() != WL_CONNECTED) {
-        serialLogLn("[Weather] WiFi not connected, skipping update");
-        return;
-    }
-    
-    // Check cache validity (10 min)
-    if (weather.valid && (millis() - weather.lastUpdate < WEATHER_UPDATE_INTERVAL)) {
-        serialLogLn("[Weather] Using cached data");
         return;
     }
     
@@ -378,8 +414,8 @@ void fetchWeatherData() {
     if (httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
         
-        // Parse JSON
-        JsonDocument doc;
+        // Parse JSON (Open-Meteo responses can be large)
+        StaticJsonDocument<4096> doc;
         DeserializationError error = deserializeJson(doc, payload);
         
         if (!error) {
@@ -397,22 +433,23 @@ void fetchWeatherData() {
             
             weather.valid = true;
             weather.lastUpdate = millis();
+            lastWeatherFetch = millis();
             
-            // Fetch location name (only if not already set or coordinates changed)
-            if (weather.locationName == "" || weather.locationName == "Unbekannter Ort") {
+            // Fetch location name (always fetch if forceRefresh is true or not already set)
+            if (forceRefresh || weather.locationName == "" || weather.locationName == "Unbekannter Ort") {
                 serialLogLn("[Weather] Fetching location name...");
                 weather.locationName = fetchLocationName(state.latitude, state.longitude);
                 serialLog("[Weather] Location: ");
-                serialLogLn(weather.locationName);
+                serialLogLn(weather.locationName.c_str());
             }
             
             serialLogLn("[Weather] ✅ Data updated successfully");
             serialLog("[Weather] Current: ");
-            serialLog(String(weather.temperature, 1));
+            serialLog(String(weather.temperature, 1).c_str());
             serialLog("°C, ");
-            serialLog(String(weather.humidity));
+            serialLog(String(weather.humidity).c_str());
             serialLog("% humidity, ");
-            serialLog(String(weather.windSpeed, 1));
+            serialLog(String(weather.windSpeed, 1).c_str());
             serialLogLn(" km/h wind");
         } else {
             serialLog("[Weather] ❌ JSON parse error: ");
@@ -421,11 +458,44 @@ void fetchWeatherData() {
         }
     } else {
         serialLog("[Weather] ❌ HTTP error: ");
-        serialLogLn(String(httpCode));
+        serialLogLn(String(httpCode).c_str());
         weather.valid = false;
     }
     
     http.end();
+}
+
+// Public function with time-based throttling
+void fetchWeatherData() {
+    // Check if WiFi is connected
+    if (WiFi.status() != WL_CONNECTED) {
+        return;
+    }
+    
+    unsigned long now = millis();
+    
+    // If weather data is invalid, fetch immediately (don't wait for interval)
+    if (!weather.valid) {
+        // Only fetch if we haven't tried in the last 30 seconds (avoid spam)
+        if (now - lastWeatherFetch < 30000) {
+            return;
+        }
+        doFetchWeatherData(false);
+        return;
+    }
+    
+    // Only check/fetch weather every 10 minutes (avoid spamming serial output)
+    if (now - lastWeatherFetch < WEATHER_UPDATE_INTERVAL) {
+        return;
+    }
+    
+    // Check cache validity (10 min)
+    if (weather.valid && (now - weather.lastUpdate < WEATHER_UPDATE_INTERVAL)) {
+        serialLogLn("[Weather] Using cached data");
+        return;
+    }
+    
+    doFetchWeatherData(false);
 }
 
 // ========== TELEGRAM NOTIFICATIONS ==========
@@ -447,7 +517,7 @@ void sendTelegramMessage(String message) {
     }
     
     serialLog("[Telegram] Sending: ");
-    serialLogLn(message);
+    serialLogLn(message.c_str());
     
     HTTPClient http;
     
@@ -474,7 +544,7 @@ void sendTelegramMessage(String message) {
         serialLogLn("[Telegram] ✅ Message sent successfully");
     } else {
         serialLog("[Telegram] ❌ Error: ");
-        serialLogLn(String(httpCode));
+        serialLogLn(String(httpCode).c_str());
     }
     
     http.end();
@@ -482,33 +552,49 @@ void sendTelegramMessage(String message) {
 
 // ========== INITIALIZE TEMPERATURE SENSORS ==========
 void initSensors() {
+    Serial.println("[Sensor] Initializing DS18B20 sensors on GPIO4...");
     sensors.begin();
+    
+    // Wait a bit for sensors to stabilize
+    delay(100);
+    
     int deviceCount = sensors.getDeviceCount();
     
-    Serial.printf("Found %d DS18B20 sensor(s) on OneWire bus\n", deviceCount);
+    Serial.printf("[Sensor] Found %d DS18B20 sensor(s) on OneWire bus\n", deviceCount);
+    
+    if (deviceCount == 0) {
+        Serial.println("[Sensor] ERROR: No sensors found! Check wiring:");
+        Serial.println("  - Red wire (VDD) -> 3.3V");
+        Serial.println("  - Black wire (GND) -> GND");
+        Serial.println("  - Yellow wire (DQ) -> GPIO4");
+        Serial.println("  - 4.7kΩ resistor between GPIO4 and 3.3V");
+    }
     
     if (deviceCount >= 1) {
         sensors.getAddress(sensor1Address, 0);
         sensor1Found = true;
-        Serial.print("Sensor 1 (Vorlauf) address: ");
+        Serial.print("[Sensor] Sensor 1 (Vorlauf) address: ");
         for (uint8_t i = 0; i < 8; i++) {
             Serial.printf("%02X", sensor1Address[i]);
         }
         Serial.println();
+    } else {
+        sensor1Found = false;
     }
     
     if (deviceCount >= 2) {
         sensors.getAddress(sensor2Address, 1);
         sensor2Found = true;
-        Serial.print("Sensor 2 (Rücklauf) address: ");
+        Serial.print("[Sensor] Sensor 2 (Rücklauf) address: ");
         for (uint8_t i = 0; i < 8; i++) {
             Serial.printf("%02X", sensor2Address[i]);
         }
         Serial.println();
-    }
-    
-    if (deviceCount < 2) {
-        Serial.println("WARNING: Less than 2 sensors found. Using single sensor for both values.");
+    } else {
+        sensor2Found = false;
+        if (deviceCount < 2) {
+            Serial.println("[Sensor] WARNING: Less than 2 sensors found. Using single sensor for both values.");
+        }
     }
 }
 
@@ -522,8 +608,12 @@ void readTemperatures() {
         if (temp != DEVICE_DISCONNECTED_C && temp >= -55.0 && temp <= 125.0) {
             state.tempVorlauf = temp;
         } else {
+            Serial.printf("[Sensor] Sensor 1 read error: %.2f°C (disconnected: %d)\n", temp, (temp == DEVICE_DISCONNECTED_C));
             state.tempVorlauf = NAN;
         }
+    } else {
+        Serial.println("[Sensor] Sensor 1 not found!");
+        state.tempVorlauf = NAN;
     }
     
     // Read sensor 2 (Rücklauf)
@@ -532,11 +622,15 @@ void readTemperatures() {
         if (temp != DEVICE_DISCONNECTED_C && temp >= -55.0 && temp <= 125.0) {
             state.tempRuecklauf = temp;
         } else {
+            Serial.printf("[Sensor] Sensor 2 read error: %.2f°C (disconnected: %d)\n", temp, (temp == DEVICE_DISCONNECTED_C));
             state.tempRuecklauf = NAN;
         }
     } else if (sensor1Found) {
         // Fallback: If only one sensor, use it for both
         state.tempRuecklauf = state.tempVorlauf;
+    } else {
+        Serial.println("[Sensor] Sensor 2 not found!");
+        state.tempRuecklauf = NAN;
     }
 }
 
@@ -692,6 +786,7 @@ void loadSettings() {
     // Load location (default: Cologne, Germany)
     state.latitude = prefs.getFloat("latitude", 50.952149);
     state.longitude = prefs.getFloat("longitude", 7.1229);
+    state.locationName = prefs.getString("locationName", "");
     
     // Load schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -734,6 +829,7 @@ void saveSettings() {
     // Save location
     prefs.putFloat("latitude", state.latitude);
     prefs.putFloat("longitude", state.longitude);
+    prefs.putString("locationName", state.locationName);
     
     if (state.mode == "manual") {
         prefs.putBool("heatingOn", state.heatingOn);
@@ -903,6 +999,13 @@ void setupWebServer() {
         doc["latitude"] = state.latitude;
         doc["longitude"] = state.longitude;
         
+        // Location name (prefer saved name, then weather location name)
+        if (state.locationName.length() > 0 && state.locationName != "Unbekannter Ort") {
+            doc["locationName"] = state.locationName;
+        } else if (weather.locationName.length() > 0 && weather.locationName != "Unbekannter Ort") {
+            doc["locationName"] = weather.locationName;
+        }
+        
         // Schedules
         JsonArray schedArray = doc.createNestedArray("schedules");
         for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -924,21 +1027,48 @@ void setupWebServer() {
     
     // API: Toggle heater (manual mode only)
     server.on("/api/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
+        Serial.println("[API] /api/toggle called");
+        Serial.flush();
+        
         if (!request->authenticate(AUTH_USER, AUTH_PASS)) {
+            Serial.println("[API] Authentication failed");
+            Serial.flush();
             return request->requestAuthentication();
         }
         
         if (millis() - lastToggleTime < DEBOUNCE_MS) {
+            Serial.println("[API] Too many requests (debounce)");
+            Serial.flush();
             request->send(429, "application/json", "{\"error\":\"Too many requests\"}");
             return;
         }
         
         if (state.mode != "manual") {
+            Serial.print("[API] Not in manual mode (current: ");
+            Serial.print(state.mode);
+            Serial.println(")");
+            Serial.flush();
             request->send(400, "application/json", "{\"error\":\"Not in manual mode\"}");
             return;
         }
         
+        Serial.print("[API] Toggling heater from ");
+        Serial.print(state.heatingOn ? "ON" : "OFF");
+        Serial.print(" to ");
+        Serial.println(state.heatingOn ? "OFF" : "ON");
+        
+        // Read current pin state BEFORE toggle
+        int pinBefore = digitalRead(RELAY_PIN);
+        Serial.printf("[API] GPIO23 BEFORE toggle: %s\n", pinBefore == LOW ? "LOW" : "HIGH");
+        Serial.flush();
+        
         setHeater(!state.heatingOn);
+        
+        // Read pin state AFTER toggle
+        delay(100);
+        int pinAfter = digitalRead(RELAY_PIN);
+        Serial.printf("[API] GPIO23 AFTER toggle: %s\n", pinAfter == LOW ? "LOW" : "HIGH");
+        Serial.flush();
         lastToggleTime = millis();
         
         StaticJsonDocument<64> doc;
@@ -1075,42 +1205,85 @@ void setupWebServer() {
         
         String query = request->getParam("query")->value();
         
+        Serial.printf("[Geocode] Searching for: %s\n", query.c_str());
+        
         HTTPClient http;
         
+        // URL encode query parameter - encode all non-ASCII and special chars
+        String encodedQuery = "";
+        for (unsigned int i = 0; i < query.length(); i++) {
+            unsigned char c = query.charAt(i);
+            // Allow: a-z, A-Z, 0-9, -, _, ., ~
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
+                (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+                encodedQuery += (char)c;
+            } else if (c == ' ') {
+                encodedQuery += "+";
+            } else {
+                // URL encode all other characters (including Umlaute)
+                char hex[4];
+                sprintf(hex, "%%%02X", c);
+                encodedQuery += hex;
+            }
+        }
+        
+        Serial.printf("[Geocode] Encoded query: %s\n", encodedQuery.c_str());
+        
         // OpenStreetMap Nominatim API (forward geocoding)
-        String url = "http://nominatim.openstreetmap.org/search?";
-        url += "q=" + query;
-        url += "&format=json&limit=1&countrycodes=de"; // Limit to Germany
+        // Use HTTPS to avoid HTTP 301 redirect
+        String url = "https://nominatim.openstreetmap.org/search?";
+        url += "q=" + encodedQuery;
+        url += "&format=json&limit=5";
+        url += "&accept-language=de"; // Prefer German results
+        
+        Serial.printf("[Geocode] URL: %s\n", url.c_str());
         
         http.begin(url);
         http.addHeader("User-Agent", "ESP32-HeaterControl/2.3.0");
-        http.setTimeout(5000);
+        http.setTimeout(10000); // Increased timeout
         
         int httpCode = http.GET();
+        
+        Serial.printf("[Geocode] HTTP Code: %d\n", httpCode);
         
         StaticJsonDocument<512> doc;
         
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
+            Serial.printf("[Geocode] Response length: %d\n", payload.length());
             
-            // Parse array response
-            JsonDocument responseDoc;
+            // Parse array response - increase buffer size for larger responses
+            StaticJsonDocument<2048> responseDoc;
             DeserializationError error = deserializeJson(responseDoc, payload);
             
-            if (!error && responseDoc.size() > 0) {
+            if (!error && responseDoc.is<JsonArray>() && responseDoc.size() > 0) {
                 JsonObject firstResult = responseDoc[0];
                 
                 doc["found"] = true;
                 doc["latitude"] = firstResult["lat"].as<float>();
                 doc["longitude"] = firstResult["lon"].as<float>();
-                doc["displayName"] = firstResult["display_name"].as<String>();
+                
+                // Extract city name from display_name (take only first part before comma)
+                String displayName = firstResult["display_name"].as<String>();
+                int commaIndex = displayName.indexOf(',');
+                if (commaIndex > 0) {
+                    displayName = displayName.substring(0, commaIndex);
+                }
+                doc["displayName"] = displayName;
+                
+                Serial.printf("[Geocode] Found: %s at %.6f,%.6f\n", 
+                            displayName.c_str(), 
+                            doc["latitude"].as<float>(), 
+                            doc["longitude"].as<float>());
             } else {
+                Serial.printf("[Geocode] Parse error or empty: %s\n", error.c_str());
                 doc["found"] = false;
-                doc["error"] = "Location not found";
+                doc["error"] = error ? String("Parse error: ") + error.c_str() : "Location not found";
             }
         } else {
+            Serial.printf("[Geocode] HTTP error: %d\n", httpCode);
             doc["found"] = false;
-            doc["error"] = "Geocoding service unavailable";
+            doc["error"] = "Geocoding service unavailable (HTTP " + String(httpCode) + ")";
         }
         
         http.end();
@@ -1124,13 +1297,18 @@ void setupWebServer() {
     server.on("/api/weather", HTTP_GET, [](AsyncWebServerRequest *request) {
         StaticJsonDocument<512> doc;
         
+        // Always include locationName if available (even if weather data is invalid)
+        // Only include if it's not the default "Unbekannter Ort"
+        if (weather.locationName.length() > 0 && weather.locationName != "Unbekannter Ort") {
+            doc["locationName"] = weather.locationName;
+        }
+        
         if (weather.valid) {
             doc["valid"] = true;
             doc["temperature"] = round(weather.temperature * 10) / 10.0;
             doc["weatherCode"] = weather.weatherCode;
             doc["humidity"] = weather.humidity;
             doc["windSpeed"] = round(weather.windSpeed * 10) / 10.0;
-            doc["locationName"] = weather.locationName;
             
             // Tomorrow forecast
             JsonObject forecast = doc.createNestedObject("tomorrow");
@@ -1140,7 +1318,10 @@ void setupWebServer() {
             forecast["precipitation"] = round(weather.precipitation * 10) / 10.0;
         } else {
             doc["valid"] = false;
-            doc["error"] = "No weather data available";
+            // Only include error message if location is set (to avoid spam)
+            if (weather.locationName.length() > 0 && weather.locationName != "Unbekannter Ort") {
+                doc["error"] = "No weather data available";
+            }
         }
         
         String json;
@@ -1183,12 +1364,31 @@ void setupWebServer() {
                 }
             }
             
+            // Save location name if provided
+            if (doc.containsKey("locationName")) {
+                String locName = doc["locationName"].as<String>();
+                if (locName.length() > 0) {
+                    state.locationName = locName;
+                    weather.locationName = locName;  // Also update weather location name
+                    changed = true;
+                }
+            }
+            
             if (changed) {
                 saveSettings();
-                // Force weather update on next loop (and refetch location name)
+                // Force immediate weather update (reset fetch timer and clear cache)
                 weather.valid = false;
                 weather.lastUpdate = 0;
-                weather.locationName = "";
+                lastWeatherFetch = 0;  // Force immediate fetch
+                
+                // Only clear location name if coordinates changed but no name was provided
+                if (!doc.containsKey("locationName")) {
+                    weather.locationName = "";  // Will be refetched with new coordinates
+                }
+                
+                // Fetch weather data immediately with force refresh (don't wait for next loop cycle)
+                doFetchWeatherData(true);
+                
                 request->send(200, "application/json", "{\"success\":true,\"message\":\"Location updated\"}");
             } else {
                 request->send(400, "application/json", "{\"error\":\"Invalid location data\"}");
@@ -1312,12 +1512,46 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
     Serial.println("\n\n=== ESP32 Heater Control v2.0 ===");
+    Serial.println("=== RELAY TEST MODE ===");
+    Serial.println("GPIO23 will toggle every 2 seconds");
+    Serial.println("Watch relay LED and listen for clicks!\n");
     
     bootTime = millis();
     
-    pinMode(RELAY_PIN, OUTPUT);
-    digitalWrite(RELAY_PIN, HIGH);  // Relay OFF
+    // Use Open-Drain mode: HIGH = floating (Relay OFF via internal pull-up), LOW = driven (Relay ON)
+    pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
+    digitalWrite(RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
+    Serial.println("[Setup] GPIO23 initialized to OPEN-DRAIN HIGH (Relay OFF)");
     
+    // Verify initial state
+    int initState = digitalRead(RELAY_PIN);
+    Serial.printf("[Setup] GPIO23 read back: %s\n", initState == LOW ? "LOW" : "HIGH");
+    Serial.flush();
+    
+    // Test: Toggle once to ensure it works
+    delay(1000);
+    Serial.println("\n[Test] Setting GPIO23 to LOW (Relay ON) - should click!");
+    digitalWrite(RELAY_PIN, LOW);
+    delay(100);
+    int readBack = digitalRead(RELAY_PIN);
+    Serial.printf("[Test] GPIO23 read back: %s\n", readBack == LOW ? "LOW" : "HIGH");
+    delay(2000);
+    
+    Serial.println("[Test] Setting GPIO23 to HIGH (Relay OFF) - should click!");
+    digitalWrite(RELAY_PIN, HIGH);
+    delay(100);
+    readBack = digitalRead(RELAY_PIN);
+    Serial.printf("[Test] GPIO23 read back: %s\n", readBack == LOW ? "LOW" : "HIGH");
+    delay(2000);
+    
+    Serial.println("\n[Test] Starting continuous toggle in loop()...\n");
+    Serial.println("=== SKIPPING NORMAL SETUP - RELAY TEST MODE ===\n");
+    Serial.flush();
+    
+    // SKIP ALL NORMAL SETUP IN TEST MODE - just return and let loop() handle toggling
+    // return;  // COMMENTED OUT - BACK TO NORMAL MODE
+    
+    // NORMAL SETUP - NOW ACTIVE AGAIN
     // Initialize ultrasonic sensor pins
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
@@ -1348,6 +1582,21 @@ void setup() {
     } else {
         setupMDNS();
         setupNTP();
+        
+        // Use saved location name or fetch initial location name if coordinates are set and location name is empty
+        if (state.locationName.length() > 0 && state.locationName != "Unbekannter Ort") {
+            weather.locationName = state.locationName;
+            Serial.printf("[Setup] Using saved location name: %s\n", weather.locationName.c_str());
+        } else if (weather.locationName == "" || weather.locationName == "Unbekannter Ort") {
+            Serial.println("[Setup] Fetching initial location name...");
+            weather.locationName = fetchLocationName(state.latitude, state.longitude);
+            // Save fetched location name
+            if (weather.locationName != "Unbekannter Ort" && weather.locationName.length() > 0) {
+                state.locationName = weather.locationName;
+                saveSettings();
+            }
+            Serial.printf("[Setup] Location: %s\n", weather.locationName.c_str());
+        }
     }
     
     setupWebServer();
@@ -1378,11 +1627,45 @@ void setup() {
 
 // ========== LOOP ==========
 void loop() {
+    // TEST MODE - COMMENTED OUT (uncomment to test relay)
+    /*
+    static unsigned long lastToggle = 0;
+    static bool relayState = false;
+    unsigned long now = millis();
+    
+    if (lastToggle == 0) {
+        lastToggle = now;
+        relayState = false;
+        Serial.println("\n[Loop] First toggle - Setting GPIO23 to LOW");
+        pinMode(RELAY_PIN, OUTPUT);
+        digitalWrite(RELAY_PIN, LOW);
+        delay(100);
+        return;
+    }
+    
+    if (now - lastToggle >= 2000) {
+        lastToggle = now;
+        relayState = !relayState;
+        
+        if (relayState) {
+            pinMode(RELAY_PIN, OUTPUT);
+            digitalWrite(RELAY_PIN, LOW);
+        } else {
+            pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
+            digitalWrite(RELAY_PIN, HIGH);
+        }
+        delay(100);
+        return;
+    }
+    delay(10);
+    */
+    
+    // NORMAL MODE
     unsigned long now = millis();
     
     state.uptime = (now - bootTime) / 1000;
     
-    // Update weather data (cached, updates every 10 min)
+    // Update weather data (cached, updates every 10 min, checked every 10 min)
     fetchWeatherData();
     
     // Sync NTP if not yet synced
