@@ -69,6 +69,13 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 - ✅ **Laufzeit-Tracking**: ON/OFF-Zeiten
 - ✅ **Wetter-Widget**: Open-Meteo API mit Standort-Eingabe (Stadt/PLZ), Geocoding
 
+### Benachrichtigungen
+- ✅ **Telegram-Bot**: Push-Benachrichtigungen bei wichtigen Events
+- ✅ **Heizungs-Status**: Automatische Meldung bei EIN/AUS
+- ✅ **Sensor-Fehler**: Alarm wenn Sensoren ausfallen (+ Recovery-Meldung)
+- ✅ **Tank-Level**: Warnung bei niedrigem Füllstand (< 20%)
+- ✅ **Test-Funktion**: Test-Nachricht direkt aus dem Dashboard
+
 ### Interface
 - ✅ **Professionelles Dashboard-Design**
 - ✅ **Responsive**: Funktioniert auf Desktop & Mobile
@@ -419,6 +426,52 @@ Current temperature: 22.5°C
 === Setup complete ===
 ```
 
+## 📱 Telegram-Benachrichtigungen (optional)
+
+### Bot erstellen
+
+1. **Telegram öffnen** und nach `@BotFather` suchen
+2. **Bot erstellen** mit `/newbot`
+3. **Namen eingeben** (z.B. "Heizungssteuerung")
+4. **Username** (muss auf `bot` enden, z.B. "s3v_heizung_bot")
+5. **Bot Token kopieren** (z.B. `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+### Chat ID ermitteln
+
+1. **Starte Chat** mit deinem Bot
+2. **Sende Nachricht** (z.B. "Hallo")
+3. **Öffne im Browser**:
+   ```
+   https://api.telegram.org/bot<DEIN_BOT_TOKEN>/getUpdates
+   ```
+4. **Suche** nach `"chat":{"id":123456789` → Das ist deine Chat ID!
+
+### Konfiguration
+
+Trage in `include/secrets.h` ein:
+
+```cpp
+const char* TELEGRAM_BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz";
+const char* TELEGRAM_CHAT_ID = "123456789";
+```
+
+### Testen
+
+1. Firmware flashen: `pio run -t upload`
+2. Dashboard öffnen: `http://heater.local/`
+3. Zu "📱 Telegram-Benachrichtigungen" scrollen
+4. **"Test-Nachricht senden"** klicken
+5. Telegram prüfen → Du solltest eine Nachricht bekommen! 🎉
+
+### Automatische Benachrichtigungen
+
+Der ESP32 sendet automatisch Telegram-Nachrichten bei:
+
+- 🔥 **Heizung EIN/AUS** (mit Modus & Temperatur)
+- ⚠️ **Sensor-Fehler** (wenn beide DS18B20 ausfallen)
+- ✅ **Sensoren wieder OK** (nach Recovery)
+- 🪫 **Tank niedrig** (< 20% Füllstand)
+
 ## 🐛 Troubleshooting
 
 ### Problem: WiFi verbindet nicht
@@ -455,12 +508,13 @@ Alle wichtigen Features sind implementiert:
 - ✅ **Tankfüllstand** - JSN-SR04T Ultraschall-Sensor (optional)
 - ✅ **Serial Monitor** - Live-Logs per WebSocket im Dashboard
 - ✅ **Wetter-Widget** - Open-Meteo API mit Standort-Eingabe (Stadt/PLZ)
+- ✅ **Telegram-Bot** - Push-Benachrichtigungen bei wichtigen Events
 
 ## 🔮 Mögliche Erweiterungen
 
-- [ ] Telegram/WhatsApp-Bot für Benachrichtigungen
 - [ ] Grafana/InfluxDB Integration für Langzeit-Statistiken
 - [ ] Mehrere Heizkreise parallel
+- [ ] Täglicher Status-Report per Telegram (z.B. um 06:00 Uhr)
 
 
 ## 📝 Lizenz
