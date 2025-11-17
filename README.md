@@ -442,10 +442,6 @@ Current temperature: 22.5°C
 - **Lösung**: ESP32 beim Upload **BOOT-Button** gedrückt halten
 - **Tipp**: USB-Kabel direkt am PC (nicht über Hub)
 
-## 📝 Lizenz
-
-Dieses Projekt ist frei verwendbar für private und kommerzielle Zwecke.
-
 ## ✅ Implementierte Features (v2.3.0)
 
 Alle wichtigen Features sind implementiert:
@@ -465,6 +461,11 @@ Alle wichtigen Features sind implementiert:
 - [ ] Telegram/WhatsApp-Bot für Benachrichtigungen
 - [ ] Grafana/InfluxDB Integration für Langzeit-Statistiken
 - [ ] Mehrere Heizkreise parallel
+
+
+## 📝 Lizenz
+
+Dieses Projekt ist frei verwendbar für private und kommerzielle Zwecke.
 
 ---
 

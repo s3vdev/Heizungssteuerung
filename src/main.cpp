@@ -120,6 +120,10 @@ unsigned long lastTankRead = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
 
+// Telegram notification flags
+bool sensorErrorNotified = false;
+bool tankLowNotified = false;
+
 // ========== SERIAL MONITOR (WebSocket) ==========
 #define LOG_BUFFER_SIZE 50
 String logBuffer[LOG_BUFFER_SIZE];
@@ -164,8 +168,10 @@ void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
 // ========== RELAY CONTROL (Active-Low) ==========
 void setHeater(bool on, bool saveToNVS = true) {
+    bool stateChanged = (on != state.heatingOn);
+    
     // Only count as switch if state actually changes
-    if (on != state.heatingOn) {
+    if (stateChanged) {
         stats.switchCount++;
         stats.todaySwitches++;
         lastStateChangeTime = millis();
@@ -183,6 +189,20 @@ void setHeater(bool on, bool saveToNVS = true) {
     }
     
     Serial.printf("Heater %s (Relay: %s)\n", on ? "ON" : "OFF", on ? "LOW" : "HIGH");
+    
+    // Send Telegram notification on state change
+    if (stateChanged && isTelegramConfigured()) {
+        String mode = state.mode;
+        mode.toUpperCase();
+        String emoji = on ? "🔥" : "❄️";
+        String status = on ? "EIN" : "AUS";
+        String msg = emoji + " Heizung " + status + "\n";
+        msg += "Modus: " + mode + "\n";
+        if (state.tempVorlauf != -127.0) {
+            msg += "🌡️ Vorlauf: " + String(state.tempVorlauf, 1) + "°C";
+        }
+        sendTelegramMessage(msg);
+    }
 }
 
 // ========== UPDATE STATISTICS ==========
@@ -269,6 +289,18 @@ void updateTankLevel() {
     
     // Round to 1 decimal
     state.tankLiters = round(state.tankLiters * 10) / 10.0;
+    
+    // Check for low tank level (< 20%)
+    if (state.tankPercent < 20 && !tankLowNotified && isTelegramConfigured()) {
+        String msg = "🪫 TANK NIEDRIG!\n\n";
+        msg += "Füllstand: " + String(state.tankPercent) + "% (" + String(state.tankLiters, 1) + "L)\n";
+        msg += "Bitte nachfüllen!";
+        sendTelegramMessage(msg);
+        tankLowNotified = true;
+    } else if (state.tankPercent >= 25 && tankLowNotified) {
+        // Reset flag when tank is refilled (25% to have some hysteresis)
+        tankLowNotified = false;
+    }
 }
 
 // ========== REVERSE GEOCODING ==========
@@ -391,6 +423,58 @@ void fetchWeatherData() {
         serialLog("[Weather] ❌ HTTP error: ");
         serialLogLn(String(httpCode));
         weather.valid = false;
+    }
+    
+    http.end();
+}
+
+// ========== TELEGRAM NOTIFICATIONS ==========
+bool isTelegramConfigured() {
+    // Check if Telegram is configured (bot token is not the placeholder)
+    return (String(TELEGRAM_BOT_TOKEN) != "YOUR_BOT_TOKEN_HERE" && 
+            String(TELEGRAM_BOT_TOKEN).length() > 10);
+}
+
+void sendTelegramMessage(String message) {
+    if (!isTelegramConfigured()) {
+        serialLogLn("[Telegram] Not configured, skipping notification");
+        return;
+    }
+    
+    if (WiFi.status() != WL_CONNECTED) {
+        serialLogLn("[Telegram] WiFi not connected, skipping notification");
+        return;
+    }
+    
+    serialLog("[Telegram] Sending: ");
+    serialLogLn(message);
+    
+    HTTPClient http;
+    
+    String url = "https://api.telegram.org/bot";
+    url += TELEGRAM_BOT_TOKEN;
+    url += "/sendMessage";
+    
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+    
+    // Escape special characters in message
+    message.replace("\"", "\\\"");
+    message.replace("\n", "\\n");
+    
+    String payload = "{\"chat_id\":\"";
+    payload += TELEGRAM_CHAT_ID;
+    payload += "\",\"text\":\"";
+    payload += message;
+    payload += "\"}";
+    
+    int httpCode = http.POST(payload);
+    
+    if (httpCode == HTTP_CODE_OK) {
+        serialLogLn("[Telegram] ✅ Message sent successfully");
+    } else {
+        serialLog("[Telegram] ❌ Error: ");
+        serialLogLn(String(httpCode));
     }
     
     http.end();
@@ -568,9 +652,25 @@ void automaticControl() {
 // ========== FAILSAFE CHECK ==========
 void checkFailsafe() {
     // If both sensors fail, turn off
-    if (isnan(state.tempVorlauf) && isnan(state.tempRuecklauf) && state.heatingOn) {
-        Serial.println("FAILSAFE: All sensors failed, turning heater OFF");
-        setHeater(false);
+    if (isnan(state.tempVorlauf) && isnan(state.tempRuecklauf)) {
+        if (state.heatingOn) {
+            Serial.println("FAILSAFE: All sensors failed, turning heater OFF");
+            setHeater(false);
+        }
+        
+        // Send Telegram notification once
+        if (!sensorErrorNotified && isTelegramConfigured()) {
+            sendTelegramMessage("⚠️ SENSOR-FEHLER!\n\nBeide Temperatursensoren ausgefallen.\nHeizung wurde automatisch deaktiviert.");
+            sensorErrorNotified = true;
+        }
+    } else {
+        // Reset flag when sensors are working again
+        if (sensorErrorNotified) {
+            if (isTelegramConfigured()) {
+                sendTelegramMessage("✅ Sensoren wieder OK\n\n🌡️ Vorlauf: " + String(state.tempVorlauf, 1) + "°C");
+            }
+            sensorErrorNotified = false;
+        }
     }
 }
 
@@ -1095,6 +1195,27 @@ void setupWebServer() {
             }
         }
     );
+    
+    // API: Send test Telegram message
+    server.on("/api/telegram/test", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!request->authenticate(AUTH_USER, AUTH_PASS)) {
+            return request->requestAuthentication();
+        }
+        
+        if (!isTelegramConfigured()) {
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Telegram nicht konfiguriert. Bitte Bot Token in secrets.h eintragen.\"}");
+            return;
+        }
+        
+        String msg = "🔔 TEST-NACHRICHT\n\n";
+        msg += "✅ Telegram funktioniert!\n";
+        msg += "🌡️ Vorlauf: " + String(state.tempVorlauf, 1) + "°C\n";
+        msg += "📊 Status: " + String(state.heatingOn ? "EIN" : "AUS");
+        
+        sendTelegramMessage(msg);
+        
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Testnachricht gesendet\"}");
+    });
     
     server.onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "Not found");

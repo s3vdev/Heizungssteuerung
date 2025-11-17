@@ -1014,6 +1014,31 @@
                 <input type="hidden" id="longitude" value="7.1229">
             </div>
         </div>
+        
+        <!-- Telegram Notifications -->
+        <div class="card">
+            <div class="card-body">
+                <div class="card-header">
+                    <div class="card-title">📱 Telegram-Benachrichtigungen</div>
+                </div>
+                
+                <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
+                    <i class="fas fa-info-circle"></i> Telegram-Bot Token muss in <code>secrets.h</code> eingetragen werden. Chat ID: <strong>265523534</strong>
+                </div>
+                
+                <button class="btn btn-primary" onclick="sendTelegramTest()" id="telegramTestBtn">
+                    <i class="fas fa-paper-plane"></i> Test-Nachricht senden
+                </button>
+                
+                <div class="info-box" style="font-size: 12px; margin-top: 12px;">
+                    <strong>Automatische Benachrichtigungen:</strong><br>
+                    🔥 Heizung EIN/AUS<br>
+                    ⚠️ Sensor-Fehler<br>
+                    🪫 Tank niedrig (&lt; 20%)<br>
+                    ✅ Sensoren wieder OK
+                </div>
+            </div>
+        </div>
 
         <div class="right-column">
             <!-- NEW: Weather Card -->
@@ -1871,6 +1896,41 @@
             } catch (error) {
                 console.error('Failed to save location:', error);
                 showToast('Fehler beim Suchen des Standorts', 'error');
+            }
+        }
+        
+        // Send Telegram test message
+        async function sendTelegramTest() {
+            if (isLocalMode) {
+                showToast('⚠️ Telegram-Test nur im Live-Modus verfügbar', 'warning');
+                return;
+            }
+            
+            const btn = document.getElementById('telegramTestBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sende...';
+            
+            try {
+                const response = await fetch('/api/telegram/test', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('admin:admin')
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('✅ Test-Nachricht gesendet! Prüfe Telegram.', 'success', 5000);
+                } else {
+                    showToast('❌ ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Telegram test error:', error);
+                showToast('Fehler beim Senden der Test-Nachricht', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Test-Nachricht senden';
             }
         }
         
