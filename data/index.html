@@ -1014,31 +1014,6 @@
                 <input type="hidden" id="longitude" value="7.1229">
             </div>
         </div>
-        
-        <!-- Telegram Notifications -->
-        <div class="card">
-            <div class="card-body">
-                <div class="card-header">
-                    <div class="card-title">📱 Telegram-Benachrichtigungen</div>
-                </div>
-                
-                <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
-                    <i class="fas fa-info-circle"></i> Telegram-Bot Token muss in <code>secrets.h</code> eingetragen werden. Chat ID: <strong>265523534</strong>
-                </div>
-                
-                <button class="btn btn-primary" onclick="sendTelegramTest()" id="telegramTestBtn">
-                    <i class="fas fa-paper-plane"></i> Test-Nachricht senden
-                </button>
-                
-                <div class="info-box" style="font-size: 12px; margin-top: 12px;">
-                    <strong>Automatische Benachrichtigungen:</strong><br>
-                    🔥 Heizung EIN/AUS<br>
-                    ⚠️ Sensor-Fehler<br>
-                    🪫 Tank niedrig (&lt; 20%)<br>
-                    ✅ Sensoren wieder OK
-                </div>
-            </div>
-        </div>
 
         <div class="right-column">
             <!-- NEW: Weather Card -->
@@ -1050,6 +1025,31 @@
                 
                 <div id="weatherContent">
                     <div class="weather-error">Lade Wetterdaten...</div>
+                </div>
+            </div>
+            
+            <!-- Telegram Notifications -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="card-header">
+                        <div class="card-title">📱 Telegram-Benachrichtigungen</div>
+                    </div>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
+                        <i class="fas fa-info-circle"></i> Telegram-Bot Token muss in <code>secrets.h</code> eingetragen werden. Chat ID: <strong>265523534</strong>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="sendTelegramTest()" id="telegramTestBtn">
+                        <i class="fas fa-paper-plane"></i> Test-Nachricht senden
+                    </button>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-top: 12px;">
+                        <strong>Automatische Benachrichtigungen:</strong><br>
+                        🔥 Heizung EIN/AUS<br>
+                        ⚠️ Sensor-Fehler<br>
+                        🪫 Tank niedrig (&lt; 20%)<br>
+                        ✅ Sensoren wieder OK
+                    </div>
                 </div>
             </div>
             
