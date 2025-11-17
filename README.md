@@ -133,9 +133,11 @@ Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durc
 - **Wasserdicht**: IP67 (Sensor-Kopf kann eingetaucht werden)
 
 ### Schaltlogik
-- **Relais Active-Low**: 
-  - `GPIO23 = LOW` → Relais EIN → Heizung läuft
-  - `GPIO23 = HIGH` → Relais AUS → Heizung ruht
+- **Relais Active-Low mit Open-Drain-Mode**: 
+  - `GPIO23 = LOW` (OUTPUT-Mode) → Relais EIN → Heizung läuft
+  - `GPIO23 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Heizung ruht
+  
+  **Hinweis:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig. Daher wird Open-Drain-Mode für HIGH verwendet (Pin ist "floating" und wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen).
 
 ## 🚀 Installation
 

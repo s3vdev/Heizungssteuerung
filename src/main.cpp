@@ -192,6 +192,7 @@ void setHeater(bool on, bool saveToNVS = true) {
     
     state.heatingOn = on;
     // Active-Low: LOW = ON, HIGH = OFF
+    // IMPORTANT: HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig!
     // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
     // Use normal OUTPUT for LOW (driven to GND)
     

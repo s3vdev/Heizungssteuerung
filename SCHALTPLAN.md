@@ -98,9 +98,13 @@
 | **COM** | Phase (L) | Eingang 230V |
 | **NO** | zu Heizgerät | Ausgang (Normal Open) |
 
-**Active-Low Logik:**
-- GPIO23 = **LOW** (0V) → Relais **EIN** → Heizung läuft
-- GPIO23 = **HIGH** (3.3V) → Relais **AUS** → Heizung aus
+**Active-Low Logik mit Open-Drain-Mode:**
+- GPIO23 = **LOW** (OUTPUT-Mode, 0V) → Relais **EIN** → Heizung läuft
+- GPIO23 = **HIGH** (OUTPUT_OPEN_DRAIN-Mode, floating) → Relais **AUS** → Heizung aus
+
+**WICHTIG:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig! Daher muss Open-Drain-Mode verwendet werden:
+- HIGH wird als "floating" gesetzt → wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen
+- LOW wird im normalen OUTPUT-Mode gesetzt → Pin zieht aktiv auf GND
 
 ### JSN-SR04T Ultraschall-Sensor (optional)
 
