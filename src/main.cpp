@@ -9,6 +9,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include "secrets.h"
 
 // ========== PIN CONFIGURATION ==========
@@ -18,7 +19,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.0"     // Version anzeigen im Dashboard
+#define FIRMWARE_VERSION "v2.3.0"     // Version anzeigen im Dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -30,6 +31,7 @@
 #define MAX_SCHEDULES 4
 #define TANK_READ_INTERVAL 5000       // Read tank level every 5 seconds
 #define ULTRASONIC_TIMEOUT 30000      // 30ms timeout for echo (max ~5m range)
+#define WEATHER_UPDATE_INTERVAL 600000  // Update weather every 10 minutes
 
 // ========== GLOBAL OBJECTS ==========
 AsyncWebServer server(80);
@@ -85,7 +87,32 @@ struct SystemState {
     float tankDistance = -1.0;          // Current distance to liquid surface in cm
     float tankLiters = 0.0;             // Calculated liters
     int tankPercent = 0;                // Calculated fill percentage
+    
+    // Weather & Location
+    float latitude = 50.952149;         // Default: Cologne
+    float longitude = 7.1229;
 } state;
+
+// ========== WEATHER CACHE ==========
+struct WeatherData {
+    bool valid = false;
+    unsigned long lastUpdate = 0;
+    
+    // Current weather
+    float temperature = 0.0;
+    int weatherCode = 0;
+    int humidity = 0;
+    float windSpeed = 0.0;
+    
+    // Tomorrow forecast
+    float tempMin = 0.0;
+    float tempMax = 0.0;
+    int forecastWeatherCode = 0;
+    float precipitation = 0.0;
+    
+    // Location name
+    String locationName = "";
+} weather;
 
 unsigned long lastToggleTime = 0;
 unsigned long lastTempRead = 0;
@@ -242,6 +269,131 @@ void updateTankLevel() {
     
     // Round to 1 decimal
     state.tankLiters = round(state.tankLiters * 10) / 10.0;
+}
+
+// ========== REVERSE GEOCODING ==========
+String fetchLocationName(float lat, float lon) {
+    HTTPClient http;
+    
+    // OpenStreetMap Nominatim API (free, no API key needed)
+    String url = "http://nominatim.openstreetmap.org/reverse?";
+    url += "lat=" + String(lat, 6);
+    url += "&lon=" + String(lon, 6);
+    url += "&format=json";
+    url += "&zoom=10";  // City level
+    
+    http.begin(url);
+    http.addHeader("User-Agent", "ESP32-HeaterControl/2.3.0");
+    http.setTimeout(5000);
+    
+    int httpCode = http.GET();
+    String locationName = "Unbekannter Ort";
+    
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error) {
+            // Try to get city, town, or village
+            if (doc["address"]["city"]) {
+                locationName = doc["address"]["city"].as<String>();
+            } else if (doc["address"]["town"]) {
+                locationName = doc["address"]["town"].as<String>();
+            } else if (doc["address"]["village"]) {
+                locationName = doc["address"]["village"].as<String>();
+            } else if (doc["address"]["municipality"]) {
+                locationName = doc["address"]["municipality"].as<String>();
+            }
+        }
+    }
+    
+    http.end();
+    return locationName;
+}
+
+// ========== FETCH WEATHER DATA ==========
+void fetchWeatherData() {
+    // Check if WiFi is connected
+    if (WiFi.status() != WL_CONNECTED) {
+        serialLogLn("[Weather] WiFi not connected, skipping update");
+        return;
+    }
+    
+    // Check cache validity (10 min)
+    if (weather.valid && (millis() - weather.lastUpdate < WEATHER_UPDATE_INTERVAL)) {
+        serialLogLn("[Weather] Using cached data");
+        return;
+    }
+    
+    serialLogLn("[Weather] Fetching new weather data...");
+    
+    HTTPClient http;
+    
+    // Build API URL
+    String url = "http://api.open-meteo.com/v1/forecast?";
+    url += "latitude=" + String(state.latitude, 6);
+    url += "&longitude=" + String(state.longitude, 6);
+    url += "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m";
+    url += "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum";
+    url += "&timezone=Europe/Berlin&forecast_days=2";
+    
+    http.begin(url);
+    http.setTimeout(10000);  // 10 sec timeout
+    
+    int httpCode = http.GET();
+    
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        
+        // Parse JSON
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error) {
+            // Current weather
+            weather.temperature = doc["current"]["temperature_2m"];
+            weather.weatherCode = doc["current"]["weather_code"];
+            weather.humidity = doc["current"]["relative_humidity_2m"];
+            weather.windSpeed = doc["current"]["wind_speed_10m"];
+            
+            // Tomorrow forecast (index 1)
+            weather.tempMin = doc["daily"]["temperature_2m_min"][1];
+            weather.tempMax = doc["daily"]["temperature_2m_max"][1];
+            weather.forecastWeatherCode = doc["daily"]["weather_code"][1];
+            weather.precipitation = doc["daily"]["precipitation_sum"][1];
+            
+            weather.valid = true;
+            weather.lastUpdate = millis();
+            
+            // Fetch location name (only if not already set or coordinates changed)
+            if (weather.locationName == "" || weather.locationName == "Unbekannter Ort") {
+                serialLogLn("[Weather] Fetching location name...");
+                weather.locationName = fetchLocationName(state.latitude, state.longitude);
+                serialLog("[Weather] Location: ");
+                serialLogLn(weather.locationName);
+            }
+            
+            serialLogLn("[Weather] ✅ Data updated successfully");
+            serialLog("[Weather] Current: ");
+            serialLog(String(weather.temperature, 1));
+            serialLog("°C, ");
+            serialLog(String(weather.humidity));
+            serialLog("% humidity, ");
+            serialLog(String(weather.windSpeed, 1));
+            serialLogLn(" km/h wind");
+        } else {
+            serialLog("[Weather] ❌ JSON parse error: ");
+            serialLogLn(error.c_str());
+            weather.valid = false;
+        }
+    } else {
+        serialLog("[Weather] ❌ HTTP error: ");
+        serialLogLn(String(httpCode));
+        weather.valid = false;
+    }
+    
+    http.end();
 }
 
 // ========== INITIALIZE TEMPERATURE SENSORS ==========
@@ -437,6 +589,10 @@ void loadSettings() {
     state.tankHeight = prefs.getFloat("tankHeight", 100.0);
     state.tankCapacity = prefs.getFloat("tankCapacity", 1000.0);
     
+    // Load location (default: Cologne, Germany)
+    state.latitude = prefs.getFloat("latitude", 50.952149);
+    state.longitude = prefs.getFloat("longitude", 7.1229);
+    
     // Load schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
         String key = "sched" + String(i);
@@ -474,6 +630,10 @@ void saveSettings() {
     // Save tank configuration
     prefs.putFloat("tankHeight", state.tankHeight);
     prefs.putFloat("tankCapacity", state.tankCapacity);
+    
+    // Save location
+    prefs.putFloat("latitude", state.latitude);
+    prefs.putFloat("longitude", state.longitude);
     
     if (state.mode == "manual") {
         prefs.putBool("heatingOn", state.heatingOn);
@@ -639,6 +799,10 @@ void setupWebServer() {
         doc["tankHeight"] = state.tankHeight;
         doc["tankCapacity"] = state.tankCapacity;
         
+        // Location
+        doc["latitude"] = state.latitude;
+        doc["longitude"] = state.longitude;
+        
         // Schedules
         JsonArray schedArray = doc.createNestedArray("schedules");
         for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -799,6 +963,136 @@ void setupWebServer() {
             }
             
             request->send(200, "application/json", "{\"success\":true}");
+        }
+    );
+    
+    // API: Geocode location (city/PLZ to coordinates)
+    server.on("/api/geocode", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("query")) {
+            request->send(400, "application/json", "{\"error\":\"Missing query parameter\"}");
+            return;
+        }
+        
+        String query = request->getParam("query")->value();
+        
+        HTTPClient http;
+        
+        // OpenStreetMap Nominatim API (forward geocoding)
+        String url = "http://nominatim.openstreetmap.org/search?";
+        url += "q=" + query;
+        url += "&format=json&limit=1&countrycodes=de"; // Limit to Germany
+        
+        http.begin(url);
+        http.addHeader("User-Agent", "ESP32-HeaterControl/2.3.0");
+        http.setTimeout(5000);
+        
+        int httpCode = http.GET();
+        
+        StaticJsonDocument<512> doc;
+        
+        if (httpCode == HTTP_CODE_OK) {
+            String payload = http.getString();
+            
+            // Parse array response
+            JsonDocument responseDoc;
+            DeserializationError error = deserializeJson(responseDoc, payload);
+            
+            if (!error && responseDoc.size() > 0) {
+                JsonObject firstResult = responseDoc[0];
+                
+                doc["found"] = true;
+                doc["latitude"] = firstResult["lat"].as<float>();
+                doc["longitude"] = firstResult["lon"].as<float>();
+                doc["displayName"] = firstResult["display_name"].as<String>();
+            } else {
+                doc["found"] = false;
+                doc["error"] = "Location not found";
+            }
+        } else {
+            doc["found"] = false;
+            doc["error"] = "Geocoding service unavailable";
+        }
+        
+        http.end();
+        
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+    
+    // API: Get weather data
+    server.on("/api/weather", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<512> doc;
+        
+        if (weather.valid) {
+            doc["valid"] = true;
+            doc["temperature"] = round(weather.temperature * 10) / 10.0;
+            doc["weatherCode"] = weather.weatherCode;
+            doc["humidity"] = weather.humidity;
+            doc["windSpeed"] = round(weather.windSpeed * 10) / 10.0;
+            doc["locationName"] = weather.locationName;
+            
+            // Tomorrow forecast
+            JsonObject forecast = doc.createNestedObject("tomorrow");
+            forecast["tempMin"] = round(weather.tempMin * 10) / 10.0;
+            forecast["tempMax"] = round(weather.tempMax * 10) / 10.0;
+            forecast["weatherCode"] = weather.forecastWeatherCode;
+            forecast["precipitation"] = round(weather.precipitation * 10) / 10.0;
+        } else {
+            doc["valid"] = false;
+            doc["error"] = "No weather data available";
+        }
+        
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+    
+    // API: Update location
+    server.on("/api/location", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {},
+        NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            if (!request->authenticate(AUTH_USER, AUTH_PASS)) {
+                return request->requestAuthentication();
+            }
+            
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+            
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+            
+            bool changed = false;
+            
+            if (doc.containsKey("latitude")) {
+                float lat = doc["latitude"];
+                if (lat >= -90 && lat <= 90) {
+                    state.latitude = lat;
+                    changed = true;
+                }
+            }
+            
+            if (doc.containsKey("longitude")) {
+                float lon = doc["longitude"];
+                if (lon >= -180 && lon <= 180) {
+                    state.longitude = lon;
+                    changed = true;
+                }
+            }
+            
+            if (changed) {
+                saveSettings();
+                // Force weather update on next loop (and refetch location name)
+                weather.valid = false;
+                weather.lastUpdate = 0;
+                weather.locationName = "";
+                request->send(200, "application/json", "{\"success\":true,\"message\":\"Location updated\"}");
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Invalid location data\"}");
+            }
         }
     );
     
@@ -966,6 +1260,9 @@ void loop() {
     unsigned long now = millis();
     
     state.uptime = (now - bootTime) / 1000;
+    
+    // Update weather data (cached, updates every 10 min)
+    fetchWeatherData();
     
     // Sync NTP if not yet synced
     if (!state.ntpSynced && !state.apModeActive) {
