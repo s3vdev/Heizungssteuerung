@@ -1466,15 +1466,13 @@ void setupWebServer() {
     // Initialize OTA Updates (custom handler)
     server.on("/update", HTTP_POST, 
         [](AsyncWebServerRequest *request) {
+            // POST handler is called AFTER upload completes
+            // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
-            AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", 
-                shouldReboot ? "OK" : "FAIL");
-            response->addHeader("Connection", "close");
-            request->send(response);
-            
             if (shouldReboot) {
-                Serial.println("OTA Update successful, rebooting...");
-                delay(1000);
+                Serial.println("OTA Update successful, rebooting in 3 seconds...");
+                // Give the client extra time to receive the response before rebooting
+                delay(3000);
                 ESP.restart();
             }
         },
@@ -1491,10 +1489,19 @@ void setupWebServer() {
                 }
             }
             if (final) {
-                if (Update.end(true)) {
+                bool success = Update.end(true);
+                if (success) {
                     Serial.printf("OTA Update Success: %u bytes\n", index + len);
+                    // Send response IMMEDIATELY after successful update, before reboot
+                    String status = "OK";
+                    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", status);
+                    response->addHeader("Connection", "close");
+                    request->send(response);
+                    Serial.println("Response sent to client");
+                    Serial.flush();
                 } else {
                     Update.printError(Serial);
+                    request->send(500, "text/plain", "FAIL");
                 }
             }
         }
@@ -1504,15 +1511,13 @@ void setupWebServer() {
     // Initialize LittleFS OTA Updates (for HTML/CSS/JS)
     server.on("/update-fs", HTTP_POST, 
         [](AsyncWebServerRequest *request) {
+            // POST handler is called AFTER upload completes
+            // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
-            AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", 
-                shouldReboot ? "OK" : "FAIL");
-            response->addHeader("Connection", "close");
-            request->send(response);
-            
             if (shouldReboot) {
-                Serial.println("LittleFS OTA Update successful, rebooting...");
-                delay(1000);
+                Serial.println("LittleFS OTA Update successful, rebooting in 3 seconds...");
+                // Give the client extra time to receive the response before rebooting
+                delay(3000);
                 ESP.restart();
             }
         },
@@ -1530,10 +1535,19 @@ void setupWebServer() {
                 }
             }
             if (final) {
-                if (Update.end(true)) {
+                bool success = Update.end(true);
+                if (success) {
                     Serial.printf("LittleFS OTA Success: %u bytes\n", index + len);
+                    // Send response IMMEDIATELY after successful update, before reboot
+                    String status = "OK";
+                    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", status);
+                    response->addHeader("Connection", "close");
+                    request->send(response);
+                    Serial.println("Response sent to client");
+                    Serial.flush();
                 } else {
                     Update.printError(Serial);
+                    request->send(500, "text/plain", "FAIL");
                 }
             }
         }

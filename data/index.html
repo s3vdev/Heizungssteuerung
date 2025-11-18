@@ -2470,6 +2470,8 @@
         // ========== SERIAL MONITOR (WebSocket) ==========
         let ws = null;
         let wsReconnectTimer = null;
+        let waitingForReboot = false; // Flag to indicate we're waiting for ESP32 to reboot after OTA
+        let rebootCheckInterval = null; // Interval for checking WebSocket reconnection after reboot
         
         function connectWebSocket() {
             if (isLocalMode) return;
@@ -2482,6 +2484,54 @@
             ws.onopen = () => {
                 console.log('WebSocket connected');
                 appendSerialLog('// WebSocket verbunden\n', '#27ae60');
+                
+                // If we were waiting for reboot, ESP32 is back online
+                if (waitingForReboot) {
+                    console.log('ESP32 rebooted and WebSocket reconnected');
+                    
+                    // Clear any check intervals
+                    if (rebootCheckInterval) {
+                        clearInterval(rebootCheckInterval);
+                        rebootCheckInterval = null;
+                    }
+                    
+                    // Wait for "=== Setup complete ===" message to ensure ESP32 is fully ready
+                    // This message comes via WebSocket after all initialization is done
+                    let setupCompleteReceived = false;
+                    const originalOnMessage = ws.onmessage;
+                    ws.onmessage = (event) => {
+                        // Call original handler
+                        if (originalOnMessage) {
+                            originalOnMessage(event);
+                        }
+                        
+                        // Check if setup is complete
+                        if (waitingForReboot && !setupCompleteReceived) {
+                            const message = event.data;
+                            if (message.includes('=== Setup complete ===') || message.includes('Setup complete')) {
+                                setupCompleteReceived = true;
+                                waitingForReboot = false;
+                                console.log('ESP32 setup complete, reloading page...');
+                                showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
+                                setTimeout(() => {
+                                    location.reload();
+                                }, 1000);
+                            }
+                        }
+                    };
+                    
+                    // Fallback: If no "Setup complete" message received within 5 seconds, reload anyway
+                    setTimeout(() => {
+                        if (waitingForReboot && !setupCompleteReceived) {
+                            console.log('Timeout waiting for setup complete, reloading anyway...');
+                            waitingForReboot = false;
+                            showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1000);
+                        }
+                    }, 5000);
+                }
             };
             
             ws.onmessage = (event) => {
@@ -2494,14 +2544,20 @@
             
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
-                appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
                 
-                // Reconnect after 3 seconds
-                if (!wsReconnectTimer) {
-                    wsReconnectTimer = setTimeout(() => {
-                        wsReconnectTimer = null;
-                        connectWebSocket();
-                    }, 3000);
+                // Don't auto-reconnect if we're waiting for reboot (we handle that separately)
+                if (!waitingForReboot) {
+                    appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
+                    
+                    // Reconnect after 3 seconds
+                    if (!wsReconnectTimer) {
+                        wsReconnectTimer = setTimeout(() => {
+                            wsReconnectTimer = null;
+                            connectWebSocket();
+                        }, 3000);
+                    }
+                } else {
+                    console.log('WebSocket closed, waiting for ESP32 reboot...');
                 }
             };
         }
@@ -2575,6 +2631,61 @@
                         progressBar.style.width = percentComplete + '%';
                         progressBar.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024 / 1024).toFixed(1)} MB von ${(e.total / 1024 / 1024).toFixed(1)} MB`;
+                        
+                        // If upload reaches 100%, assume success (response might not arrive due to reboot)
+                        if (percentComplete === 100 && e.loaded === e.total) {
+                            // Wait a moment to see if response arrives
+                            setTimeout(() => {
+                                // Check if we haven't already shown success
+                                if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
+                                    progressBar.style.width = '100%';
+                                    progressBar.textContent = '100%';
+                                    statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
+                                    statusText.style.color = '#27ae60';
+                                    showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                                    
+                                    // Set flag and wait for WebSocket to reconnect
+                                    waitingForReboot = true;
+                                    
+                                    // Clear any existing reconnect timer
+                                    if (wsReconnectTimer) {
+                                        clearTimeout(wsReconnectTimer);
+                                        wsReconnectTimer = null;
+                                    }
+                                    
+                                    // Clear any existing reboot check interval
+                                    if (rebootCheckInterval) {
+                                        clearInterval(rebootCheckInterval);
+                                    }
+                                    
+                                    // Close current WebSocket
+                                    if (ws) {
+                                        ws.onclose = null; // Prevent normal reconnect handler
+                                        ws.close();
+                                        ws = null;
+                                    }
+                                    
+                                    // ESP32 waits 3 seconds before reboot, then needs ~15-20 seconds for full boot
+                                    // Timeline: Upload complete → 3s wait → reboot → boot sequence → WebSocket ready (~18-23s total)
+                                    setTimeout(() => {
+                                        // Start checking for WebSocket reconnection every 2 seconds
+                                        rebootCheckInterval = setInterval(() => {
+                                            if (!waitingForReboot) {
+                                                clearInterval(rebootCheckInterval);
+                                                rebootCheckInterval = null;
+                                                return;
+                                            }
+                                            
+                                            // Try to reconnect
+                                            if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                                console.log('Attempting WebSocket reconnect after reboot...');
+                                                connectWebSocket();
+                                            }
+                                        }, 2000);
+                                    }, 8000); // Start trying after 8s (3s delay + 5s for reboot to complete)
+                                }
+                            }, 500);
+                        }
                     }
                 });
                 
@@ -2582,15 +2693,89 @@
                     if (xhr.status === 200) {
                         progressBar.style.width = '100%';
                         progressBar.textContent = '100%';
-                        statusText.textContent = '✅ Upload erfolgreich! ESP32 wird neu gestartet...';
+                        statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
                         statusText.style.color = '#27ae60';
+                        showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         
-                        setTimeout(() => {
-                            showToast('Firmware wurde erfolgreich hochgeladen! Der ESP32 startet neu...', 'success', 5000);
-                            setTimeout(() => location.reload(), 10000);
-                        }, 2000);
+                        // Set flag and wait for WebSocket to reconnect
+                        waitingForReboot = true;
+                        
+                        // Close current WebSocket so it will reconnect when ESP32 is back
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        
+                        // Start checking for WebSocket reconnection
+                        const checkInterval = setInterval(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                clearInterval(checkInterval);
+                            }
+                            // Auto-reconnect attempt
+                            if (ws && ws.readyState === WebSocket.CLOSED) {
+                                connectWebSocket();
+                            }
+                        }, 1000);
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
+                    }
+                });
+                
+                xhr.addEventListener('loadend', () => {
+                    // This fires even if connection is closed
+                    if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
+                        // If we reached 100% but didn't get response, assume success
+                        if (progressBar.style.width === '100%' || xhr.status === 200) {
+                            statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
+                            statusText.style.color = '#27ae60';
+                            showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                            
+                            // Set flag and wait for WebSocket to reconnect
+                            waitingForReboot = true;
+                            
+                            // Close current WebSocket so it will reconnect when ESP32 is back
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.close();
+                            }
+                            
+                            // Start checking for WebSocket reconnection
+                            const checkInterval = setInterval(() => {
+                                if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                    clearInterval(checkInterval);
+                                }
+                                // Auto-reconnect attempt
+                                if (ws && ws.readyState === WebSocket.CLOSED) {
+                                    connectWebSocket();
+                                }
+                            }, 1000);
+                        }
+                    }
+                });
+                
+                xhr.addEventListener('timeout', () => {
+                    // If request times out but upload was 100%, assume success
+                    if (progressBar.style.width === '100%' && statusText.textContent.indexOf('Warte') === -1) {
+                        statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
+                        statusText.style.color = '#27ae60';
+                        showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                        
+                        // Set flag and wait for WebSocket to reconnect
+                        waitingForReboot = true;
+                        
+                        // Close current WebSocket so it will reconnect when ESP32 is back
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        
+                        // Start checking for WebSocket reconnection
+                        const checkInterval = setInterval(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                clearInterval(checkInterval);
+                            }
+                            // Auto-reconnect attempt
+                            if (ws && ws.readyState === WebSocket.CLOSED) {
+                                connectWebSocket();
+                            }
+                        }, 1000);
                     }
                 });
                 
@@ -2659,6 +2844,61 @@
                         progressBar.style.width = percentComplete + '%';
                         progressBar.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024).toFixed(1)} KB von ${(e.total / 1024).toFixed(1)} KB`;
+                        
+                        // If upload reaches 100%, assume success (response might not arrive due to reboot)
+                        if (percentComplete === 100 && e.loaded === e.total) {
+                            // Wait a moment to see if response arrives
+                            setTimeout(() => {
+                                // Check if we haven't already shown success
+                                if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
+                                    progressBar.style.width = '100%';
+                                    progressBar.textContent = '100%';
+                                    statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
+                                    statusText.style.color = '#27ae60';
+                                    showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                                    
+                                    // Set flag and wait for WebSocket to reconnect
+                                    waitingForReboot = true;
+                                    
+                                    // Clear any existing reconnect timer
+                                    if (wsReconnectTimer) {
+                                        clearTimeout(wsReconnectTimer);
+                                        wsReconnectTimer = null;
+                                    }
+                                    
+                                    // Clear any existing reboot check interval
+                                    if (rebootCheckInterval) {
+                                        clearInterval(rebootCheckInterval);
+                                    }
+                                    
+                                    // Close current WebSocket
+                                    if (ws) {
+                                        ws.onclose = null; // Prevent normal reconnect handler
+                                        ws.close();
+                                        ws = null;
+                                    }
+                                    
+                                    // ESP32 waits 3 seconds before reboot, then needs ~15-20 seconds for full boot
+                                    // Timeline: Upload complete → 3s wait → reboot → boot sequence → WebSocket ready (~18-23s total)
+                                    setTimeout(() => {
+                                        // Start checking for WebSocket reconnection every 2 seconds
+                                        rebootCheckInterval = setInterval(() => {
+                                            if (!waitingForReboot) {
+                                                clearInterval(rebootCheckInterval);
+                                                rebootCheckInterval = null;
+                                                return;
+                                            }
+                                            
+                                            // Try to reconnect
+                                            if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                                console.log('Attempting WebSocket reconnect after reboot...');
+                                                connectWebSocket();
+                                            }
+                                        }, 2000);
+                                    }, 8000); // Start trying after 8s (3s delay + 5s for reboot to complete)
+                                }
+                            }, 500);
+                        }
                     }
                 });
                 
@@ -2666,15 +2906,89 @@
                     if (xhr.status === 200) {
                         progressBar.style.width = '100%';
                         progressBar.textContent = '100%';
-                        statusText.textContent = 'Frontend-Upload erfolgreich! ESP32 wird neu gestartet...';
+                        statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
                         statusText.style.color = '#27ae60';
+                        showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         
-                        setTimeout(() => {
-                            showToast('Frontend wurde erfolgreich hochgeladen! Der ESP32 startet neu...', 'success', 5000);
-                            setTimeout(() => location.reload(), 10000);
-                        }, 2000);
+                        // Set flag and wait for WebSocket to reconnect
+                        waitingForReboot = true;
+                        
+                        // Close current WebSocket so it will reconnect when ESP32 is back
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        
+                        // Start checking for WebSocket reconnection
+                        const checkInterval = setInterval(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                clearInterval(checkInterval);
+                            }
+                            // Auto-reconnect attempt
+                            if (ws && ws.readyState === WebSocket.CLOSED) {
+                                connectWebSocket();
+                            }
+                        }, 1000);
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
+                    }
+                });
+                
+                xhr.addEventListener('loadend', () => {
+                    // This fires even if connection is closed
+                    if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
+                        // If we reached 100% but didn't get response, assume success
+                        if (progressBar.style.width === '100%' || xhr.status === 200) {
+                            statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
+                            statusText.style.color = '#27ae60';
+                            showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                            
+                            // Set flag and wait for WebSocket to reconnect
+                            waitingForReboot = true;
+                            
+                            // Close current WebSocket so it will reconnect when ESP32 is back
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.close();
+                            }
+                            
+                            // Start checking for WebSocket reconnection
+                            const checkInterval = setInterval(() => {
+                                if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                    clearInterval(checkInterval);
+                                }
+                                // Auto-reconnect attempt
+                                if (ws && ws.readyState === WebSocket.CLOSED) {
+                                    connectWebSocket();
+                                }
+                            }, 1000);
+                        }
+                    }
+                });
+                
+                xhr.addEventListener('timeout', () => {
+                    // If request times out but upload was 100%, assume success
+                    if (progressBar.style.width === '100%' && statusText.textContent.indexOf('Warte') === -1) {
+                        statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
+                        statusText.style.color = '#27ae60';
+                        showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                        
+                        // Set flag and wait for WebSocket to reconnect
+                        waitingForReboot = true;
+                        
+                        // Close current WebSocket so it will reconnect when ESP32 is back
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        
+                        // Start checking for WebSocket reconnection
+                        const checkInterval = setInterval(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
+                                clearInterval(checkInterval);
+                            }
+                            // Auto-reconnect attempt
+                            if (ws && ws.readyState === WebSocket.CLOSED) {
+                                connectWebSocket();
+                            }
+                        }, 1000);
                     }
                 });
                 
