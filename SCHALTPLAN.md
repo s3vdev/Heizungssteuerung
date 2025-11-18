@@ -70,9 +70,10 @@
 
 | ESP32 Pin | Verbindung | Beschreibung |
 |-----------|------------|--------------|
-| **5V** | LM2596S OUT+ | Stromversorgung (5V) |
+| **5V** | USB-Netzteil (5V, 1-2A) ODER LM2596S OUT+ | Stromversorgung |
 | **GND** | Gemeinsame Masse | GND zu allem! |
 | **3.3V** | DS18B20 VDD (beide) + Pull-Up | Versorgung Sensoren |
+| **5V** (Ausgang) | Relais VCC + JSN-SR04T VCC (optional) | Versorgung für 5V-Komponenten |
 | **GPIO4** | DS18B20 DATA (beide) | OneWire Bus |
 | **GPIO5** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
 | **GPIO18** | JSN-SR04T ECHO | Ultraschall Echo (optional) |
@@ -92,7 +93,7 @@
 
 | Relais Pin | Verbindung | Beschreibung |
 |------------|------------|--------------|
-| **VCC** | 5V | Stromversorgung |
+| **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
 | **GND** | GND | Masse |
 | **IN** | ESP32 GPIO23 | Steuersignal |
 | **COM** | Phase (L) | Eingang 230V |
@@ -110,7 +111,7 @@
 
 | Sensor Pin | Verbindung | Beschreibung |
 |------------|------------|--------------|
-| **VCC** | 5V | Stromversorgung |
+| **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
 | **TRIG** | ESP32 GPIO5 | Trigger-Signal |
 | **ECHO** | ESP32 GPIO18 | Echo-Rückmeldung |
 | **GND** | GND | Masse |
@@ -129,20 +130,57 @@
 - Konfiguration im Dashboard: Tankhöhe & Kapazität eingeben
 - Fallback: Falls nicht angeschlossen → Dashboard zeigt "N/A"
 
-### LM2596S Spannungsregler
+### Stromversorgung (2 Optionen)
+
+#### Option 1: USB-Netzteil (empfohlen für einfache Installation)
+**Alle Komponenten können direkt am ESP32 betrieben werden:**
+
+| Komponente | Anschluss | Stromaufnahme |
+|------------|-----------|---------------|
+| ESP32 | USB-Netzteil (5V, 1-2A) | ~100-250mA |
+| Relais VCC | ESP32 5V Pin | ~70-150mA |
+| JSN-SR04T VCC (optional) | ESP32 5V Pin | ~15-30mA |
+| DS18B20 (beide) | ESP32 3.3V Pin | ~3-5mA |
+| **Gesamt** | **USB-Netzteil** | **~188-435mA** ✅ |
+
+**Vorteile:**
+- Einfache Installation (nur USB-Kabel + Netzteil)
+- Keine zusätzliche Elektronik nötig
+- USB-Netzteile sind günstig und überall erhältlich
+
+#### Option 2: LM2596S Spannungsregler (optional, bei externer 12V/24V Versorgung)
 
 | Pin | Verbindung | Spannung |
 |-----|------------|----------|
 | **IN+** | Netzteil + | 12V oder 24V |
 | **IN-** | Netzteil - | GND |
-| **OUT+** | ESP32 5V + Relais VCC | 5V (einstellen!) |
+| **OUT+** | ESP32 5V + Relais VCC + JSN-SR04T VCC | 5V (einstellen!) |
 | **OUT-** | Gemeinsame Masse | GND |
 
 **Einstellung:** Potentiometer drehen, bis LED-Anzeige **5.0V** zeigt!
 
+**Wann nötig:**
+- Externe 12V/24V Versorgung (z.B. von der Heizung)
+- Kein USB-Netzteil verfügbar
+- Besonders hohe Stromaufnahme (z.B. mehrere Relais)
+
 ## Schritt-für-Schritt Aufbau
 
 ### Phase 1: Spannungsversorgung (OHNE Netzspannung!)
+
+#### Option A: USB-Netzteil (empfohlen - einfacher!)
+
+1. **USB-Netzteil anschließen:**
+   - USB-Kabel an ESP32 USB-C Port
+   - USB-Netzteil (5V, 1-2A) in die Steckdose
+   - ESP32 sollte booten (LED leuchtet) ✅
+
+**Alle Komponenten können direkt am ESP32 angeschlossen werden:**
+- Relais VCC → ESP32 5V Pin
+- JSN-SR04T VCC → ESP32 5V Pin
+- DS18B20 VDD → ESP32 3.3V Pin
+
+#### Option B: LM2596S Spannungsregler (optional, bei 12V/24V Versorgung)
 
 1. **LM2596S einstellen:**
    - Mit USB-Netzteil (12V) an IN+ / IN- anschließen
@@ -178,7 +216,7 @@
 ### Phase 3: Relais (OHNE Last!)
 
 7. **Relais anschließen:**
-   - VCC → 5V (vom LM2596S)
+   - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
    - GND → Gemeinsame Masse
    - IN → ESP32 GPIO23
 
@@ -190,7 +228,7 @@
 ### Phase 3.5: JSN-SR04T Sensor (optional)
 
 9. **Sensor anschließen:**
-   - VCC → 5V (vom LM2596S)
+   - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
    - GND → Gemeinsame Masse
    - TRIG → ESP32 GPIO5
    - ECHO → ESP32 GPIO18

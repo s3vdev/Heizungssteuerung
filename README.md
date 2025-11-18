@@ -95,7 +95,8 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
 | **JSN-SR04T Ultraschall-Sensor** (wasserdicht) | 1x | Tankfüllstand-Messung (optional) |
 | **1-Kanal Relais-Modul** (Active-Low) | 1x | Heizungsschaltung (bis 10A) |
-| **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Für stabile 5V-Versorgung |
+| **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Optional - nur bei externer 12V/24V Versorgung nötig |
+| **USB-Netzteil** (5V, 1-2A) | 1x | Alternative zu LM2596S - alle Komponenten können direkt am ESP32 betrieben werden |
 | **4.7 kΩ Widerstand** | 1x | Pull-Up für OneWire-Bus |
 
 ### Pinbelegung
@@ -107,11 +108,12 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | Pull-Up Widerstand | GPIO4 → 3.3V | 4.7kΩ (einer für beide Sensoren) |
 | JSN-SR04T TRIG | GPIO5 | Ultraschall Trigger |
 | JSN-SR04T ECHO | GPIO18 | Ultraschall Echo |
-| JSN-SR04T VCC | 5V | Versorgung |
+| JSN-SR04T VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | JSN-SR04T GND | GND | Gemeinsame Masse |
 | Relais IN | GPIO23 | Active-Low (LOW=EIN, HIGH=AUS) |
-| Relais VCC | 5V | Externe Versorgung |
+| Relais VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | Relais GND | GND | Gemeinsame Masse |
+| ESP32 5V Pin | USB-Netzteil (5V, 1-2A) ODER LM2596S OUT+ | Stromversorgung |
 
 ### Sensor-Anschluss
 
@@ -124,7 +126,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durch Software!
 
 **JSN-SR04T Ultraschall-Sensor (optional):**
-- **VCC** → ESP32 5V (oder externe 5V)
+- **VCC** → ESP32 5V Pin (direkt am ESP32 möglich)
 - **GND** → ESP32 GND
 - **TRIG** → ESP32 GPIO5
 - **ECHO** → ESP32 GPIO18

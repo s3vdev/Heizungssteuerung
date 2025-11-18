@@ -19,3 +19,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+/release
+ESP32-Heizungssteuerung-v2.0.0.zip
