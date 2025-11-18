@@ -767,17 +767,20 @@ void automaticControl() {
         return;
     }
     
-    // Hysteresis logic
+    // Hysteresis logic (like W1209)
+    // Turn ON if below EIN temperature
     if (state.tempRuecklauf <= state.tempOn && !state.heatingOn) {
         Serial.printf("AUTO: Rücklauf %.1f°C <= %.1f°C, turning heater ON\n", 
                      state.tempRuecklauf, state.tempOn);
         setHeater(true, false);
     } 
+    // Turn OFF if above AUS temperature
     else if (state.tempRuecklauf >= state.tempOff && state.heatingOn) {
         Serial.printf("AUTO: Rücklauf %.1f°C >= %.1f°C, turning heater OFF\n", 
                      state.tempRuecklauf, state.tempOff);
         setHeater(false, false);
     }
+    // Between EIN and AUS: maintain current state (hysteresis zone)
 }
 
 // ========== FAILSAFE CHECK ==========
@@ -868,9 +871,8 @@ void saveSettings() {
     prefs.putFloat("longitude", state.longitude);
     prefs.putString("locationName", state.locationName);
     
-    if (state.mode == "manual") {
-        prefs.putBool("heatingOn", state.heatingOn);
-    }
+    // Save heating state for all modes (needed to restore after reboot)
+    prefs.putBool("heatingOn", state.heatingOn);
     
     // Save schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -1620,10 +1622,14 @@ void setup() {
     // Load settings
     loadSettings();
     
+    // Restore heater state based on mode
     if (state.mode == "manual") {
+        // Manual mode: restore saved state
         setHeater(state.heatingOn, false);
     } else {
-        setHeater(false, false);
+        // Auto/schedule modes: restore saved state so heater continues running after reboot
+        // The control functions will adjust if needed based on current conditions
+        setHeater(state.heatingOn, false);
     }
     
     bool wifiConnected = setupWiFi();
@@ -1667,10 +1673,13 @@ void setup() {
     
     checkFailsafe();
     
-    if (state.mode == "auto") {
-        automaticControl();
+    // Now let control functions decide heater state based on current conditions
+    if (state.frostProtectionEnabled) {
+        frostProtection();  // Frost protection has highest priority
+    } else if (state.mode == "auto") {
+        automaticControl();  // Will turn on if tempRuecklauf <= tempOn
     } else if (state.mode == "schedule") {
-        scheduleControl();
+        scheduleControl();  // Will turn on if in schedule time
     }
     
     Serial.println("=== Setup complete ===\n");
