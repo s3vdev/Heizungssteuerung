@@ -10,6 +10,7 @@
 #include <DallasTemperature.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <stdarg.h>
 #include "secrets.h"
 
 // ========== PIN CONFIGURATION ==========
@@ -158,6 +159,16 @@ void serialLogLn(const char* message) {
     serialLog("\n");
 }
 
+// Helper function for formatted strings (like Serial.printf but also sends to WebSocket)
+void serialLogF(const char* format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    serialLog(buffer);
+}
+
 // ========== TELEGRAM NOTIFICATIONS (FORWARD DECLARATIONS) ==========
 bool isTelegramConfigured();
 void sendTelegramMessage(String message);
@@ -187,7 +198,7 @@ void setHeater(bool on, bool saveToNVS = true) {
         stats.switchCount++;
         stats.todaySwitches++;
         lastStateChangeTime = millis();
-        Serial.printf("Switch #%lu: Heater %s\n", stats.switchCount, on ? "ON" : "OFF");
+        serialLogF("Switch #%lu: Heater %s\n", stats.switchCount, on ? "ON" : "OFF");
     }
     
     state.heatingOn = on;
@@ -196,10 +207,10 @@ void setHeater(bool on, bool saveToNVS = true) {
     // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
     // Use normal OUTPUT for LOW (driven to GND)
     
-    Serial.print("[Relay] Setting heater to ");
-    Serial.print(on ? "ON" : "OFF");
-    Serial.print(" - GPIO23: ");
-    Serial.println(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+    serialLog("[Relay] Setting heater to ");
+    serialLog(on ? "ON" : "OFF");
+    serialLog(" - GPIO23: ");
+    serialLogLn(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
     Serial.flush();
     
     if (on) {
@@ -216,8 +227,8 @@ void setHeater(bool on, bool saveToNVS = true) {
     delay(50); // Longer delay for relay to respond
     int actualState = digitalRead(RELAY_PIN);
     
-    Serial.print("[Relay] GPIO23 read back: ");
-    Serial.println(actualState == LOW ? "LOW" : "HIGH");
+    serialLog("[Relay] GPIO23 read back: ");
+    serialLogLn(actualState == LOW ? "LOW" : "HIGH");
     Serial.flush();
     
     if (saveToNVS && state.mode == "manual") {
@@ -226,10 +237,10 @@ void setHeater(bool on, bool saveToNVS = true) {
         prefs.end();
     }
     
-    Serial.print("[Relay] Heater ");
-    Serial.print(on ? "ON" : "OFF");
-    Serial.print(" - GPIO23 actual: ");
-    Serial.println(actualState == LOW ? "LOW" : "HIGH");
+    serialLog("[Relay] Heater ");
+    serialLog(on ? "ON" : "OFF");
+    serialLog(" - GPIO23 actual: ");
+    serialLogLn(actualState == LOW ? "LOW" : "HIGH");
     Serial.flush();
     
     // Send Telegram notification on state change
@@ -1028,39 +1039,39 @@ void setupWebServer() {
     
     // API: Toggle heater (manual mode only)
     server.on("/api/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
-        Serial.println("[API] /api/toggle called");
+        serialLogLn("[API] /api/toggle called");
         Serial.flush();
         
         if (!request->authenticate(AUTH_USER, AUTH_PASS)) {
-            Serial.println("[API] Authentication failed");
+            serialLogLn("[API] Authentication failed");
             Serial.flush();
             return request->requestAuthentication();
         }
         
         if (millis() - lastToggleTime < DEBOUNCE_MS) {
-            Serial.println("[API] Too many requests (debounce)");
+            serialLogLn("[API] Too many requests (debounce)");
             Serial.flush();
             request->send(429, "application/json", "{\"error\":\"Too many requests\"}");
             return;
         }
         
         if (state.mode != "manual") {
-            Serial.print("[API] Not in manual mode (current: ");
-            Serial.print(state.mode);
-            Serial.println(")");
+            serialLog("[API] Not in manual mode (current: ");
+            serialLog(state.mode.c_str());
+            serialLogLn(")");
             Serial.flush();
             request->send(400, "application/json", "{\"error\":\"Not in manual mode\"}");
             return;
         }
         
-        Serial.print("[API] Toggling heater from ");
-        Serial.print(state.heatingOn ? "ON" : "OFF");
-        Serial.print(" to ");
-        Serial.println(state.heatingOn ? "OFF" : "ON");
+        serialLog("[API] Toggling heater from ");
+        serialLog(state.heatingOn ? "ON" : "OFF");
+        serialLog(" to ");
+        serialLogLn(state.heatingOn ? "OFF" : "ON");
         
         // Read current pin state BEFORE toggle
         int pinBefore = digitalRead(RELAY_PIN);
-        Serial.printf("[API] GPIO23 BEFORE toggle: %s\n", pinBefore == LOW ? "LOW" : "HIGH");
+        serialLogF("[API] GPIO23 BEFORE toggle: %s\n", pinBefore == LOW ? "LOW" : "HIGH");
         Serial.flush();
         
         setHeater(!state.heatingOn);
@@ -1068,7 +1079,7 @@ void setupWebServer() {
         // Read pin state AFTER toggle
         delay(100);
         int pinAfter = digitalRead(RELAY_PIN);
-        Serial.printf("[API] GPIO23 AFTER toggle: %s\n", pinAfter == LOW ? "LOW" : "HIGH");
+        serialLogF("[API] GPIO23 AFTER toggle: %s\n", pinAfter == LOW ? "LOW" : "HIGH");
         Serial.flush();
         lastToggleTime = millis();
         
@@ -1106,7 +1117,7 @@ void setupWebServer() {
                 if (newMode == "manual" || newMode == "auto" || newMode == "schedule") {
                     state.mode = newMode;
                     changed = true;
-                    Serial.printf("Mode changed to: %s\n", newMode.c_str());
+                    serialLogF("Mode changed to: %s\n", newMode.c_str());
                     
                     if (newMode != "manual") {
                         setHeater(false, false);
