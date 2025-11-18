@@ -1209,7 +1209,7 @@
                         <div id="efficiencyBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%); transition: width 0.5s;"></div>
                     </div>
                     <div style="margin-top: 8px; font-size: 14px; color: #2c3e50; font-weight: 600;">
-                        Effizienz: <span id="efficiencyValue">--%</span>
+                        Wärmeabgabe: <span id="efficiencyValue">--%</span>
                     </div>
                 </div>
             </div>
@@ -1719,7 +1719,7 @@
                 } else if (rand < 0.85) {
                     // Efficiency log
                     if (currentState.tempDiff !== null) {
-                        appendSerialLog(`ΔT = ${currentState.tempDiff.toFixed(1)}°C, Efficiency: ${Math.round(currentState.efficiency)}%\n`);
+                        appendSerialLog(`ΔT = ${currentState.tempDiff.toFixed(1)}°C, Wärmeabgabe: ${Math.round(currentState.efficiency)}%\n`);
                     }
                 } else {
                     // Stats log
@@ -3428,30 +3428,35 @@
         }
         
         // ========== INITIALIZATION ==========
-        let lastWeatherUpdate = 0;
-        const WEATHER_UPDATE_INTERVAL = 60000; // Update weather every 60 seconds (not every status update)
-        
         setInterval(() => { 
             if (!isLocalMode) {
                 updateStatus();
                 
-                // Update weather less frequently (every 60 seconds instead of every second)
-                const now = Date.now();
-                if (now - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL) {
-                    lastWeatherUpdate = now;
-                    updateWeather();
-                }
+                // Weather is only updated on page load and F5 refresh, not in loop
             }
         }, 1000);
+        
+        // Update weather on page load and F5 refresh
+        function refreshWeather() {
+            if (!isLocalMode) {
+                updateWeather();
+            }
+        }
+        
+        // Update weather on F5 (keydown event)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'F5' || (e.key === 'r' && (e.metaKey || e.ctrlKey))) {
+                refreshWeather();
+            }
+        });
         
         detectMode();
         updateConnectionStatus(true);
         if (!isLocalMode) {
             // Update status first (which will call updateUI after loading data)
             updateStatus().then(() => {
-                // Update weather immediately - if it's already cached, it will display right away
+                // Update weather once on page load - if it's already cached, it will display right away
                 updateWeather();
-                lastWeatherUpdate = Date.now();
                 
                 // Also try a few times in case backend is still fetching
                 let retryCount = 0;

@@ -480,14 +480,8 @@ void doFetchWeatherData(bool forceRefresh = false) {
                 serialLogLn(weather.locationName.c_str());
             }
             
+            // Log only minimal info to avoid WebSocket spam (wind speed message was causing disconnects)
             serialLogLn("[Weather] ✅ Data updated successfully");
-            serialLog("[Weather] Current: ");
-            serialLog(String(weather.temperature, 1).c_str());
-            serialLog("°C, ");
-            serialLog(String(weather.humidity).c_str());
-            serialLog("% humidity, ");
-            serialLog(String(weather.windSpeed, 1).c_str());
-            serialLogLn(" km/h wind");
         } else {
             serialLog("[Weather] ❌ JSON parse error: ");
             serialLogLn(error.c_str());
@@ -1332,8 +1326,18 @@ void setupWebServer() {
         request->send(200, "application/json", json);
     });
     
-    // API: Get weather data
+    // API: Get weather data (updates on demand when requested)
     server.on("/api/weather", HTTP_GET, [](AsyncWebServerRequest *request) {
+        // Update weather data on demand (when page loads or F5 is pressed)
+        // Only fetch if data is old (> 10 min) or invalid, to avoid unnecessary API calls
+        unsigned long now = millis();
+        if (!weather.valid || (weather.valid && (now - weather.lastUpdate >= WEATHER_UPDATE_INTERVAL))) {
+            // Fetch in background (don't wait for response to avoid blocking)
+            if (WiFi.status() == WL_CONNECTED && state.locationName.length() > 0 && state.locationName != "Unbekannter Ort") {
+                doFetchWeatherData(false);
+            }
+        }
+        
         StaticJsonDocument<512> doc;
         
         // Always include locationName if available (even if weather data is invalid)
@@ -1658,6 +1662,11 @@ void setup() {
     
     setupWebServer();
     
+    // Fetch weather data once at startup (only if WiFi connected and location is set)
+    if (wifiConnected && state.locationName.length() > 0 && state.locationName != "Unbekannter Ort") {
+        doFetchWeatherData(false);
+    }
+    
     readTemperatures();
     Serial.printf("Vorlauf: %.1f°C, Rücklauf: %.1f°C\n", 
                  state.tempVorlauf, state.tempRuecklauf);
@@ -1728,8 +1737,7 @@ void loop() {
     
     state.uptime = (now - bootTime) / 1000;
     
-    // Update weather data (cached, updates every 10 min, checked every 10 min)
-    fetchWeatherData();
+    // Weather data is only fetched on demand via /api/weather endpoint (not in loop to avoid WebSocket issues)
     
     // Sync NTP if not yet synced
     if (!state.ntpSynced && !state.apModeActive) {
