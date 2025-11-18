@@ -20,7 +20,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.3.0"     // Version anzeigen im Dashboard
+#define FIRMWARE_VERSION "v2.1.0"     // Version anzeigen im Dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -1562,7 +1562,7 @@ void setupWebServer() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n\n=== ESP32 Heater Control v2.0 ===");
+    Serial.println("\n\n=== ESP32 Heater Control v2.1.0 ===");
     Serial.println("=== RELAY TEST MODE ===");
     Serial.println("GPIO23 will toggle every 2 seconds");
     Serial.println("Watch relay LED and listen for clicks!\n");

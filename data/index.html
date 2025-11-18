@@ -73,7 +73,7 @@
         .header-right {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 16px;
         }
         
         .current-time {
@@ -81,6 +81,68 @@
             color: #2c3e50;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
+        }
+        
+        .header-system-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+        }
+        
+        .header-info-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #7f8c8d;
+        }
+        
+        .wifi-icon {
+            font-size: 18px;
+            transition: color 0.3s;
+        }
+        
+        .wifi-icon.excellent {
+            color: #27ae60; /* Green - excellent signal > -50 dBm */
+        }
+        
+        .wifi-icon.good {
+            color: #f39c12; /* Orange - good signal -50 to -60 dBm */
+        }
+        
+        .wifi-icon.fair {
+            color: #e67e22; /* Dark orange - fair signal -60 to -70 dBm */
+        }
+        
+        .wifi-icon.poor {
+            color: #e74c3c; /* Red - poor signal < -70 dBm */
+        }
+        
+        .header-info-label {
+            font-size: 11px;
+            color: #95a5a6;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .header-info-value {
+            font-weight: 600;
+            color: #2c3e50;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .ntp-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .ntp-status.synced {
+            color: #27ae60;
+        }
+        
+        .ntp-status.pending {
+            color: #f39c12;
         }
         
         .status-indicator {
@@ -146,10 +208,50 @@
             border-bottom: 1px solid #ecf0f1;
         }
         
+        .card-header.collapsible {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .card-header.collapsible:hover {
+            opacity: 0.8;
+        }
+        
         .card-title {
             font-size: 16px;
             font-weight: 600;
             color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .collapse-arrow {
+            font-size: 12px;
+            color: #7f8c8d;
+            transition: transform 0.3s ease;
+        }
+        
+        .collapse-arrow.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .card-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease, margin-bottom 0.3s ease;
+        }
+        
+        .card-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0;
+            padding: 0;
+        }
+        
+        .card-content.expanded {
+            max-height: 2000px;
+            opacity: 1;
+            margin-bottom: 20px;
         }
         
         .card-subtitle {
@@ -815,6 +917,103 @@
             animation: slideOut 0.3s ease-in forwards;
         }
         
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease-in;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        .modal {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #7f8c8d;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .modal-close:hover {
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        
+        .modal-section {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .modal-section:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        
         /* Responsive */
         @media (max-width: 900px) {
             .container {
@@ -850,6 +1049,14 @@
             .header-right {
                 width: 100%;
                 justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+            
+            .header-system-info {
+                width: 100%;
+                flex-wrap: wrap;
+                gap: 8px;
             }
             
             .current-time {
@@ -871,6 +1078,66 @@
     <!-- Toast Notification Container -->
     <div class="toast-container" id="toastContainer"></div>
     
+    <!-- OTA Update Modal -->
+    <div class="modal-overlay" id="otaModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">🔧 OTA Update</div>
+                <button class="modal-close" onclick="closeOtaModal()">×</button>
+            </div>
+            
+            <!-- Firmware Update Section -->
+            <div class="modal-section">
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #3498db;">
+                    🔧 Firmware Update (C++ Code)
+                </div>
+                <div class="info-box" style="margin-bottom: 12px; font-size: 12px;">
+                    <strong>Backend-Logik:</strong> Nutze <code>pio run</code>, dann <code>firmware.bin</code> hochladen.
+                </div>
+                
+                <form id="otaForm" onsubmit="uploadFirmware(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="file" id="firmwareFile" accept=".bin" required style="padding: 8px; border: 2px dashed #3498db; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    
+                    <button type="submit" class="btn btn-primary" id="uploadBtn">
+                        📤 Firmware hochladen
+                    </button>
+                </form>
+                
+                <div id="uploadProgress" style="display: none; margin-top: 12px;">
+                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
+                        <div id="uploadProgressBar" style="background: linear-gradient(90deg, #27ae60, #2ecc71); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                    </div>
+                    <div id="uploadStatus" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                </div>
+            </div>
+            
+            <!-- Frontend Update Section -->
+            <div class="modal-section">
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #9b59b6;">
+                    🎨 Frontend Update (HTML/CSS/JS)
+                </div>
+                <div class="info-box" style="margin-bottom: 12px; font-size: 12px;">
+                    <strong>Dashboard:</strong> Nutze <code>pio run -t buildfs</code>, dann <code>littlefs.bin</code> hochladen.
+                </div>
+                
+                <form id="otaFormFS" onsubmit="uploadFrontend(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="file" id="frontendFile" accept=".bin" required style="padding: 8px; border: 2px dashed #9b59b6; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    
+                    <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        📤 Frontend hochladen
+                    </button>
+                </form>
+                
+                <div id="uploadProgressFS" style="display: none; margin-top: 12px;">
+                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
+                        <div id="uploadProgressBarFS" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                    </div>
+                    <div id="uploadStatusFS" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div class="header">
         <div class="header-left">
             <h1>Heizungssteuerung</h1>
@@ -878,6 +1145,20 @@
             <div class="demo-badge" id="demoBadge">DEMO</div>
         </div>
         <div class="header-right">
+            <div class="header-system-info">
+                <div class="header-info-item">
+                    <i class="fas fa-wifi wifi-icon" id="wifiIcon"></i>
+                    <span class="header-info-value" id="rssiValue">--</span>
+                </div>
+                <div class="header-info-item">
+                    <span class="header-info-label">Uptime:</span>
+                    <span class="header-info-value" id="uptimeValue">--</span>
+                </div>
+                <div class="header-info-item">
+                    <span class="header-info-label">NTP:</span>
+                    <span class="ntp-status" id="ntpStatus">--</span>
+                </div>
+            </div>
             <div class="current-time" id="currentTime">--:--</div>
             <div class="status-indicator">
                 <div class="status-dot" id="statusDot"></div>
@@ -965,6 +1246,28 @@
                         Zeitplansteuerung aktiv
                     </div>
                 </div>
+                
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ecf0f1;">
+                    <div class="toggle-control" style="margin-bottom: 12px;">
+                        <div class="toggle-label">Frostschutz aktiv</div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="frostEnabled" onchange="saveFrostProtection()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item" id="frostTempSetting" style="display: none; margin-bottom: 12px;">
+                        <label class="setting-label">Mindesttemperatur</label>
+                        <div class="input-with-unit">
+                            <input type="number" class="setting-input" id="frostTemp" value="8" min="5" max="15" step="0.5" onchange="saveFrostProtection()">
+                            <span class="input-unit">°C</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-bottom: 0;">
+                        Hält Mindesttemperatur bei Abwesenheit. Überschreibt alle anderen Modi.
+                    </div>
+                </div>
             </div>
 
             <!-- Settings Card (Auto) -->
@@ -1047,82 +1350,29 @@
                 </div>
             </div>
             
-            <!-- Telegram Notifications -->
+            <!-- Serial Monitor Card -->
             <div class="card">
-                <div class="card-body">
-                    <div class="card-header">
-                        <div class="card-title">📱 Telegram-Benachrichtigungen</div>
-                    </div>
-                    
-                    <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
-                        <i class="fas fa-info-circle"></i> Telegram-Bot Token muss in <code>secrets.h</code> eingetragen werden. Chat ID: <strong>265523534</strong>
-                    </div>
-                    
-                    <button class="btn btn-primary" onclick="sendTelegramTest()" id="telegramTestBtn">
-                        <i class="fas fa-paper-plane"></i> Test-Nachricht senden
+                <div class="card-header">
+                    <div class="card-title">Serial Monitor</div>
+                    <label class="toggle-switch" style="margin-left: auto;">
+                        <input type="checkbox" id="serialAutoScroll" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span style="font-size: 12px; color: #7f8c8d; margin-left: 8px;">Auto-Scroll</span>
+                </div>
+                
+                <div id="serialMonitor" style="background: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 11px; padding: 12px; border-radius: 6px; height: 300px; overflow-y: auto; line-height: 1.4; word-break: break-all;">
+                    <div style="color: #608b4e;">// Warte auf Verbindung...</div>
+                </div>
+                
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button class="btn btn-secondary" onclick="clearSerialMonitor()" style="flex: 1; font-size: 12px; padding: 6px 12px;">Log löschen</button>
+                    <button class="btn btn-secondary" onclick="openOtaModal()" style="flex: 1; font-size: 12px; padding: 6px 12px;">
+                        <i class="fas fa-upload"></i> OTA Update
                     </button>
-                    
-                    <div class="info-box" style="font-size: 12px; margin-top: 12px;">
-                        <strong>Automatische Benachrichtigungen:</strong><br>
-                        🔥 Heizung EIN/AUS<br>
-                        ⚠️ Sensor-Fehler<br>
-                        🪫 Tank niedrig (&lt; 20%)<br>
-                        ✅ Sensoren wieder OK
-                    </div>
                 </div>
             </div>
             
-            <!-- NEW: Statistics Card -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Statistik</div>
-                </div>
-                
-                <div class="stat-row">
-                    <span class="stat-label">Heute geschaltet</span>
-                    <span class="stat-value" id="todaySwitches">0x</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Gesamt geschaltet</span>
-                    <span class="stat-value" id="totalSwitches">0x</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Laufzeit (ON)</span>
-                    <span class="stat-value" id="onTimeValue">0h 0m</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Aus-Zeit (OFF)</span>
-                    <span class="stat-value" id="offTimeValue">0h 0m</span>
-                </div>
-            </div>
-
-            <!-- NEW: Frost Protection Card -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Frostschutz</div>
-                </div>
-                
-                <div class="toggle-control" style="margin-bottom: 16px;">
-                    <div class="toggle-label">Frostschutz aktiv</div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="frostEnabled" onchange="saveFrostProtection()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                
-                <div class="setting-item" id="frostTempSetting" style="display: none;">
-                    <label class="setting-label">Mindesttemperatur</label>
-                    <div class="input-with-unit">
-                        <input type="number" class="setting-input" id="frostTemp" value="8" min="5" max="15" step="0.5" onchange="saveFrostProtection()">
-                        <span class="input-unit">°C</span>
-                    </div>
-                </div>
-                
-                <div class="info-box" style="font-size: 12px;">
-                    Hält Mindesttemperatur bei Abwesenheit. Überschreibt alle anderen Modi.
-                </div>
-            </div>
-
             <!-- NEW: Tank Level Card -->
             <div class="card">
                 <div class="card-header">
@@ -1176,94 +1426,58 @@
                     <div style="font-size: 13px; color: #95a5a6;">JSN-SR04T nicht erkannt oder nicht angeschlossen</div>
                 </div>
             </div>
-
-            <!-- System Info Card -->
+            
+            <!-- Telegram Notifications -->
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">System</div>
-                </div>
-                
-                <div class="stat-row">
-                    <span class="stat-label">WiFi-Signal</span>
-                    <span class="stat-value" id="rssiValue">-- dBm</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Betriebszeit</span>
-                    <span class="stat-value" id="uptimeValue">--</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">NTP-Status</span>
-                    <span class="stat-value" id="ntpStatus">--</span>
-                </div>
-            </div>
-
-            <!-- Serial Monitor Card -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Serial Monitor</div>
-                    <label class="toggle-switch" style="margin-left: auto;">
-                        <input type="checkbox" id="serialAutoScroll" checked>
-                        <span class="slider"></span>
-                    </label>
-                    <span style="font-size: 12px; color: #7f8c8d; margin-left: 8px;">Auto-Scroll</span>
-                </div>
-                
-                <div id="serialMonitor" style="background: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 11px; padding: 12px; border-radius: 6px; height: 300px; overflow-y: auto; line-height: 1.4; word-break: break-all;">
-                    <div style="color: #608b4e;">// Warte auf Verbindung...</div>
-                </div>
-                
-                <button class="btn btn-secondary" onclick="clearSerialMonitor()" style="margin-top: 12px; font-size: 12px; padding: 6px 12px;">Log löschen</button>
-            </div>
-
-            <!-- OTA Update Card - Firmware -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">🔧 Firmware Update (OTA)</div>
-                </div>
-                
-                <div class="info-box" style="margin-bottom: 12px;">
-                    <strong>C++ Code</strong> (Backend-Logik): Nutze <code>pio run</code>, dann <code>firmware.bin</code> hochladen.
-                </div>
-                
-                <form id="otaForm" onsubmit="uploadFirmware(event)" style="display: flex; flex-direction: column; gap: 12px;">
-                    <input type="file" id="firmwareFile" accept=".bin" required style="padding: 8px; border: 2px dashed #3498db; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                    
-                    <button type="submit" class="btn btn-primary" id="uploadBtn">
-                        📤 Firmware hochladen
-                    </button>
-                </form>
-                
-                <div id="uploadProgress" style="display: none; margin-top: 12px;">
-                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
-                        <div id="uploadProgressBar" style="background: linear-gradient(90deg, #27ae60, #2ecc71); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                <div class="card-body">
+                    <div class="card-header">
+                        <div class="card-title">📱 Telegram-Benachrichtigungen</div>
                     </div>
-                    <div id="uploadStatus" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
+                        <i class="fas fa-info-circle"></i> Telegram-Bot Token muss in <code>secrets.h</code> eingetragen werden. Chat ID: <strong>265523534</strong>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="sendTelegramTest()" id="telegramTestBtn">
+                        <i class="fas fa-paper-plane"></i> Test-Nachricht senden
+                    </button>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-top: 12px;">
+                        <strong>Automatische Benachrichtigungen:</strong><br>
+                        🔥 Heizung EIN/AUS<br>
+                        ⚠️ Sensor-Fehler<br>
+                        🪫 Tank niedrig (&lt; 20%)<br>
+                        ✅ Sensoren wieder OK
+                    </div>
                 </div>
             </div>
-
-            <!-- OTA Update Card - Frontend/LittleFS -->
+            
+            <!-- NEW: Statistics Card -->
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">🎨 Frontend Update (OTA)</div>
-                </div>
-                
-                <div class="info-box" style="margin-bottom: 12px;">
-                    <strong>HTML/CSS/JS</strong> (Dashboard): Nutze <code>pio run -t buildfs</code>, dann <code>littlefs.bin</code> hochladen.
-                </div>
-                
-                <form id="otaFormFS" onsubmit="uploadFrontend(event)" style="display: flex; flex-direction: column; gap: 12px;">
-                    <input type="file" id="frontendFile" accept=".bin" required style="padding: 8px; border: 2px dashed #9b59b6; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                    
-                    <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                        📤 Frontend hochladen
-                    </button>
-                </form>
-                
-                <div id="uploadProgressFS" style="display: none; margin-top: 12px;">
-                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
-                        <div id="uploadProgressBarFS" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                <div class="card-header collapsible" onclick="toggleStatistics()">
+                    <div class="card-title">
+                        <i class="fas fa-chevron-right collapse-arrow" id="statisticsArrow"></i>
+                        Statistik
                     </div>
-                    <div id="uploadStatusFS" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                </div>
+                
+                <div class="card-content collapsed" id="statisticsContent">
+                    <div class="stat-row">
+                        <span class="stat-label">Heute geschaltet</span>
+                        <span class="stat-value" id="todaySwitches">0x</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Gesamt geschaltet</span>
+                        <span class="stat-value" id="totalSwitches">0x</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Laufzeit (ON)</span>
+                        <span class="stat-value" id="onTimeValue">0h 0m</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Aus-Zeit (OFF)</span>
+                        <span class="stat-value" id="offTimeValue">0h 0m</span>
+                    </div>
                 </div>
             </div>
 
@@ -1374,7 +1588,7 @@
                 document.getElementById('demoBadge').classList.add('active');
                 document.getElementById('demoControls').classList.add('active');
                 
-                currentState.version = 'v2.3.0-demo';
+                currentState.version = 'v2.1.0-demo';
                 currentState.tempVorlauf = 45.3;
                 currentState.tempRuecklauf = 22.2;
                 currentState.ntpSynced = true;
@@ -2207,10 +2421,38 @@
                 document.getElementById('tankNotAvailableContainer').style.display = 'block';
             }
             
-            // System info
-            document.getElementById('rssiValue').textContent = currentState.rssi !== null ? currentState.rssi + ' dBm' : '--';
+            // System info in header
+            const rssiElement = document.getElementById('rssiValue');
+            const wifiIcon = document.getElementById('wifiIcon');
+            if (currentState.rssi !== null) {
+                rssiElement.textContent = currentState.rssi + ' dBm';
+                // Update WiFi icon color based on signal strength
+                wifiIcon.className = 'fas fa-wifi wifi-icon';
+                if (currentState.rssi >= -50) {
+                    wifiIcon.classList.add('excellent');
+                } else if (currentState.rssi >= -60) {
+                    wifiIcon.classList.add('good');
+                } else if (currentState.rssi >= -70) {
+                    wifiIcon.classList.add('fair');
+                } else {
+                    wifiIcon.classList.add('poor');
+                }
+            } else {
+                rssiElement.textContent = '--';
+                wifiIcon.className = 'fas fa-wifi wifi-icon';
+            }
+            
             document.getElementById('uptimeValue').textContent = formatUptime(currentState.uptime);
-            document.getElementById('ntpStatus').textContent = currentState.ntpSynced ? 'Synced' : 'Pending';
+            
+            const ntpElement = document.getElementById('ntpStatus');
+            if (currentState.ntpSynced) {
+                ntpElement.textContent = 'Synced';
+                ntpElement.className = 'ntp-status synced';
+            } else {
+                ntpElement.textContent = 'Pending';
+                ntpElement.className = 'ntp-status pending';
+            }
+            
             document.getElementById('currentTime').textContent = currentState.currentTime || '--:--';
             
             // Location settings - only update if fields are not focused (to avoid overwriting user input)
@@ -2511,7 +2753,9 @@
                             if (message.includes('=== Setup complete ===') || message.includes('Setup complete')) {
                                 setupCompleteReceived = true;
                                 waitingForReboot = false;
-                                console.log('ESP32 setup complete, reloading page...');
+                                console.log('ESP32 setup complete, closing modal and reloading page...');
+                                // Close modal if open
+                                closeOtaModal();
                                 showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
                                 setTimeout(() => {
                                     location.reload();
@@ -2523,8 +2767,10 @@
                     // Fallback: If no "Setup complete" message received within 5 seconds, reload anyway
                     setTimeout(() => {
                         if (waitingForReboot && !setupCompleteReceived) {
-                            console.log('Timeout waiting for setup complete, reloading anyway...');
+                            console.log('Timeout waiting for setup complete, closing modal and reloading anyway...');
                             waitingForReboot = false;
+                            // Close modal if open
+                            closeOtaModal();
                             showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
                             setTimeout(() => {
                                 location.reload();
@@ -2585,6 +2831,150 @@
             document.getElementById('serialMonitor').innerHTML = '<div style="color: #608b4e;">// Log gelöscht</div>';
         }
         
+        // ========== STATISTICS COLLAPSE FUNCTION ==========
+        function toggleStatistics() {
+            const content = document.getElementById('statisticsContent');
+            const arrow = document.getElementById('statisticsArrow');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                content.classList.add('expanded');
+                arrow.classList.add('expanded');
+            } else {
+                content.classList.remove('expanded');
+                content.classList.add('collapsed');
+                arrow.classList.remove('expanded');
+            }
+        }
+        
+        // ========== FILE TYPE VALIDATION ==========
+        // ESP32 Firmware magic bytes: First byte is typically 0xE9 (ESP32) or 0xEA (ESP8266)
+        // LittleFS filesystem has different structure
+        async function validateFirmwareFile(file) {
+            return new Promise((resolve, reject) => {
+                // Check filename
+                const filename = file.name.toLowerCase();
+                if (!filename.includes('firmware') && !filename.includes('esp32')) {
+                    reject(new Error('Dateiname enthält nicht "firmware" oder "esp32". Bitte Firmware-Datei verwenden!'));
+                    return;
+                }
+                
+                // Check file extension
+                if (!filename.endsWith('.bin')) {
+                    reject(new Error('Datei muss eine .bin Datei sein!'));
+                    return;
+                }
+                
+                // Check file size (firmware typically > 100KB)
+                if (file.size < 100 * 1024) {
+                    reject(new Error('Datei ist zu klein für eine Firmware-Datei. Mindestens 100 KB erwartet.'));
+                    return;
+                }
+                
+                // Read first bytes to check magic bytes
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    
+                    // ESP32 firmware typically starts with 0xE9 or 0xEA
+                    // LittleFS starts with different bytes
+                    const firstByte = uint8Array[0];
+                    
+                    // ESP32 bootloader header check (typical values: 0xE9, 0xEA)
+                    if (firstByte !== 0xE9 && firstByte !== 0xEA && firstByte !== 0xE0) {
+                        // Check if it might be LittleFS (starts with filesystem signature)
+                        if (uint8Array[0] === 0x6C && uint8Array[1] === 0x69 && uint8Array[2] === 0x74 && uint8Array[3] === 0x74) {
+                            reject(new Error('Diese Datei ist eine LittleFS-Datei (Frontend), keine Firmware! Bitte firmware.bin verwenden.'));
+                        } else {
+                            reject(new Error('Datei scheint keine gültige ESP32-Firmware zu sein. Bitte firmware.bin verwenden.'));
+                        }
+                        return;
+                    }
+                    
+                    resolve(true);
+                };
+                reader.onerror = function() {
+                    reject(new Error('Fehler beim Lesen der Datei'));
+                };
+                reader.readAsArrayBuffer(file.slice(0, 16)); // Read first 16 bytes
+            });
+        }
+        
+        async function validateLittleFSFile(file) {
+            return new Promise((resolve, reject) => {
+                // Check filename
+                const filename = file.name.toLowerCase();
+                if (!filename.includes('littlefs') && !filename.includes('spiffs') && !filename.includes('filesystem')) {
+                    reject(new Error('Dateiname enthält nicht "littlefs", "spiffs" oder "filesystem". Bitte Frontend-Datei verwenden!'));
+                    return;
+                }
+                
+                // Check file extension
+                if (!filename.endsWith('.bin')) {
+                    reject(new Error('Datei muss eine .bin Datei sein!'));
+                    return;
+                }
+                
+                // Read first bytes to check for LittleFS signature
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    
+                    // Check if it's firmware instead (ESP32 starts with 0xE9/0xEA)
+                    if (uint8Array[0] === 0xE9 || uint8Array[0] === 0xEA || uint8Array[0] === 0xE0) {
+                        reject(new Error('Diese Datei ist eine Firmware-Datei, keine LittleFS-Datei! Bitte littlefs.bin verwenden.'));
+                        return;
+                    }
+                    
+                    // LittleFS might start with different signatures, so we're less strict
+                    // Just make sure it's not firmware
+                    resolve(true);
+                };
+                reader.onerror = function() {
+                    reject(new Error('Fehler beim Lesen der Datei'));
+                };
+                reader.readAsArrayBuffer(file.slice(0, 16)); // Read first 16 bytes
+            });
+        }
+        
+        // ========== MODAL FUNCTIONS ==========
+        function openOtaModal() {
+            document.getElementById('otaModal').classList.add('active');
+        }
+        
+        function closeOtaModal() {
+            document.getElementById('otaModal').classList.remove('active');
+        }
+        
+        // Close modal on overlay click and ESC key
+        function initModalHandlers() {
+            const modal = document.getElementById('otaModal');
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeOtaModal();
+                    }
+                });
+                
+                // Close modal on ESC key
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && modal.classList.contains('active')) {
+                        closeOtaModal();
+                    }
+                });
+            }
+        }
+        
+        // Initialize modal handlers when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initModalHandlers);
+        } else {
+            // DOM already loaded
+            initModalHandlers();
+        }
+        
         // ========== OTA FIRMWARE UPLOAD ==========
         async function uploadFirmware(event) {
             event.preventDefault();
@@ -2602,8 +2992,11 @@
                 return;
             }
             
-            if (!file.name.endsWith('.bin')) {
-                showToast('Bitte wähle eine .bin Datei aus', 'warning');
+            // Validate file type
+            try {
+                await validateFirmwareFile(file);
+            } catch (error) {
+                showToast(error.message, 'error');
                 return;
             }
             
@@ -2815,8 +3208,11 @@
                 return;
             }
             
-            if (!file.name.endsWith('.bin')) {
-                showToast('Bitte wähle eine littlefs.bin Datei aus', 'warning');
+            // Validate file type
+            try {
+                await validateLittleFSFile(file);
+            } catch (error) {
+                showToast(error.message, 'error');
                 return;
             }
             

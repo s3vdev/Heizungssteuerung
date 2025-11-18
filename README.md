@@ -1,6 +1,6 @@
 # ESP32 Heizungssteuerung - Web UI
 
-**Version: 2.3.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
+**Version: 2.1.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
 
 Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mit Web-Interface.
 
