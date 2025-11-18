@@ -133,9 +133,13 @@ String logBuffer[LOG_BUFFER_SIZE];
 int logBufferIndex = 0;
 int logBufferCount = 0;
 
-// Rate limiting for WebSocket
+// Rate limiting for WebSocket - reduced to send more messages
 unsigned long lastWebSocketSend = 0;
-#define WEBSOCKET_MIN_INTERVAL 100  // Minimum 100ms between sends
+#define WEBSOCKET_MIN_INTERVAL 10  // Minimum 10ms between sends (was 100ms)
+
+// Queue for pending messages (to avoid losing messages due to rate limiting)
+String pendingMessage = "";
+bool hasPendingMessage = false;
 
 // Custom print function that sends to both Serial and WebSocket
 void serialLog(const char* message) {
@@ -146,11 +150,32 @@ void serialLog(const char* message) {
     logBufferIndex = (logBufferIndex + 1) % LOG_BUFFER_SIZE;
     if (logBufferCount < LOG_BUFFER_SIZE) logBufferCount++;
     
-    // Send to all WebSocket clients with rate limiting
-    unsigned long now = millis();
-    if (ws.count() > 0 && (now - lastWebSocketSend >= WEBSOCKET_MIN_INTERVAL)) {
-        ws.textAll(message);
-        lastWebSocketSend = now;
+    // Send to all WebSocket clients with improved rate limiting
+    if (ws.count() > 0) {
+        unsigned long now = millis();
+        if (now - lastWebSocketSend >= WEBSOCKET_MIN_INTERVAL) {
+            // Send immediately if enough time has passed
+            ws.textAll(message);
+            lastWebSocketSend = now;
+            hasPendingMessage = false;
+        } else {
+            // Queue message if rate limit not met yet
+            pendingMessage += String(message);
+            hasPendingMessage = true;
+        }
+    }
+}
+
+// Call this periodically to flush pending messages
+void flushWebSocketMessages() {
+    if (hasPendingMessage && ws.count() > 0) {
+        unsigned long now = millis();
+        if (now - lastWebSocketSend >= WEBSOCKET_MIN_INTERVAL) {
+            ws.textAll(pendingMessage.c_str());
+            lastWebSocketSend = now;
+            pendingMessage = "";
+            hasPendingMessage = false;
+        }
     }
 }
 
@@ -1639,6 +1664,9 @@ void setup() {
 
 // ========== LOOP ==========
 void loop() {
+    // Flush pending WebSocket messages
+    flushWebSocketMessages();
+    
     // TEST MODE - COMMENTED OUT (uncomment to test relay)
     /*
     static unsigned long lastToggle = 0;
