@@ -1187,11 +1187,11 @@
                 </div>
                 <div class="hyst-stats">
                     <div class="hyst-item">
-                        <div class="hyst-label ein">Heizung <b>EIN</b> unter</div>
+                        <div class="hyst-label ein">Heizung <b>EIN</b></div>
                         <div class="hyst-value" id="statTempOn">--°C</div>
                     </div>
                     <div class="hyst-item">
-                        <div class="hyst-label aus">Heizung <b>AUS</b> über</div>
+                        <div class="hyst-label aus">Heizung <b>AUS</b></div>
                         <div class="hyst-value" id="statTempOff">--°C</div>
                     </div>
                 </div>
@@ -1209,7 +1209,7 @@
                         <div id="efficiencyBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%); transition: width 0.5s;"></div>
                     </div>
                     <div style="margin-top: 8px; font-size: 14px; color: #2c3e50; font-weight: 600;">
-                        Wärmeabgabe: <span id="efficiencyValue">--%</span>
+                        Heizleistung: <span id="efficiencyValue">--%</span>
                     </div>
                 </div>
             </div>
@@ -1277,7 +1277,7 @@
                 </div>
                 
                 <div class="setting-item">
-                    <label class="setting-label">Heizung EIN unter</label>
+                    <label class="setting-label">Heizung EIN</label>
                     <div class="input-with-unit">
                         <input type="number" class="setting-input" id="tempOn" value="30" step="0.5">
                         <span class="input-unit">°C</span>
@@ -1286,7 +1286,7 @@
                 </div>
                 
                 <div class="setting-item">
-                    <label class="setting-label">Heizung AUS über</label>
+                    <label class="setting-label">Heizung AUS</label>
                     <div class="input-with-unit">
                         <input type="number" class="setting-input" id="tempOff" value="40" step="0.5">
                         <span class="input-unit">°C</span>
@@ -1719,7 +1719,7 @@
                 } else if (rand < 0.85) {
                     // Efficiency log
                     if (currentState.tempDiff !== null) {
-                        appendSerialLog(`ΔT = ${currentState.tempDiff.toFixed(1)}°C, Wärmeabgabe: ${Math.round(currentState.efficiency)}%\n`);
+                        appendSerialLog(`ΔT = ${currentState.tempDiff.toFixed(1)}°C, Heizleistung: ${Math.round(currentState.efficiency)}%\n`);
                     }
                 } else {
                     // Stats log

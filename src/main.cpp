@@ -248,12 +248,17 @@ void setHeater(bool on, bool saveToNVS = true) {
         digitalWrite(RELAY_PIN, HIGH);
     }
     
-    // Verify pin state was set correctly
+    // Verify pin state was set correctly (only log if verification fails)
     delay(50); // Longer delay for relay to respond
     int actualState = digitalRead(RELAY_PIN);
+    bool stateCorrect = (on && actualState == LOW) || (!on && actualState != LOW);
     
-    serialLog("[Relay] GPIO23 read back: ");
-    serialLogLn(actualState == LOW ? "LOW" : "HIGH");
+    if (!stateCorrect) {
+        serialLog("[Relay] ⚠️ GPIO23 read back mismatch! Expected: ");
+        serialLog(on ? "LOW" : "HIGH");
+        serialLog(", Got: ");
+        serialLogLn(actualState == LOW ? "LOW" : "HIGH");
+    }
     Serial.flush();
     
     if (saveToNVS && state.mode == "manual") {
@@ -431,8 +436,7 @@ void doFetchWeatherData(bool forceRefresh = false) {
         return;
     }
     
-    serialLogLn("[Weather] Fetching new weather data...");
-    
+    // Silent weather fetch (no logging to reduce WebSocket spam)
     HTTPClient http;
     
     // Build API URL
@@ -474,14 +478,10 @@ void doFetchWeatherData(bool forceRefresh = false) {
             
             // Fetch location name (always fetch if forceRefresh is true or not already set)
             if (forceRefresh || weather.locationName == "" || weather.locationName == "Unbekannter Ort") {
-                serialLogLn("[Weather] Fetching location name...");
                 weather.locationName = fetchLocationName(state.latitude, state.longitude);
-                serialLog("[Weather] Location: ");
-                serialLogLn(weather.locationName.c_str());
             }
             
-            // Log only minimal info to avoid WebSocket spam (wind speed message was causing disconnects)
-            serialLogLn("[Weather] ✅ Data updated successfully");
+            // Silent success (no logging to reduce WebSocket spam)
         } else {
             serialLog("[Weather] ❌ JSON parse error: ");
             serialLogLn(error.c_str());
@@ -522,7 +522,7 @@ void fetchWeatherData() {
     
     // Check cache validity (10 min)
     if (weather.valid && (now - weather.lastUpdate < WEATHER_UPDATE_INTERVAL)) {
-        serialLogLn("[Weather] Using cached data");
+        // Silent cache use (no logging)
         return;
     }
     
