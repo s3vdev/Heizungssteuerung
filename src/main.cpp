@@ -218,14 +218,22 @@ void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         serialLogF("WebSocket client #%u connected\n", client->id());
         
         // Send complete log history to new client
-        // Send all messages from buffer as one large batch for better performance
+        // Send as one properly formatted message to avoid overwhelming the connection
         if (logBufferCount > 0) {
             String fullHistory = "";
             for (int i = 0; i < logBufferCount; i++) {
                 int idx = (logBufferIndex - logBufferCount + i + LOG_BUFFER_SIZE) % LOG_BUFFER_SIZE;
-                fullHistory += logBuffer[idx];
+                String msg = logBuffer[idx];
+                if (msg.length() > 0) {
+                    // Ensure each message ends with newline
+                    if (msg.charAt(msg.length() - 1) != '\n') {
+                        fullHistory += msg + "\n";
+                    } else {
+                        fullHistory += msg;
+                    }
+                }
             }
-            // Send entire history at once (ESP32 can handle this)
+            // Send entire history as one message (WebSocket handles this fine)
             if (fullHistory.length() > 0) {
                 client->text(fullHistory);
             }

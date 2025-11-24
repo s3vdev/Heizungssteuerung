@@ -2864,9 +2864,23 @@
             }
             
             // If already connected or connecting, don't create another connection
-            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-                console.log('WebSocket already connected or connecting, skipping...');
-                return;
+            if (ws) {
+                if (ws.readyState === WebSocket.CONNECTING) {
+                    console.log('WebSocket connection already in progress, skipping...');
+                    return;
+                }
+                if (ws.readyState === WebSocket.OPEN) {
+                    console.log('WebSocket already connected, skipping...');
+                    return;
+                }
+                if (ws.readyState === WebSocket.CLOSING) {
+                    console.log('WebSocket is closing, waiting before reconnect...');
+                    return;
+                }
+                // If closed, clean up
+                if (ws.readyState === WebSocket.CLOSED) {
+                    ws = null;
+                }
             }
             
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -2937,45 +2951,63 @@
             };
             
             ws.onmessage = (event) => {
-                appendSerialLog(event.data);
+                // Handle both single-line and multi-line messages
+                const data = event.data;
+                // Split by newlines and add each line separately
+                const lines = data.split('\n');
+                lines.forEach((line) => {
+                    // Skip empty lines only if they're the last line and data ends with \n
+                    if (line.length > 0) {
+                        appendSerialLog(line);
+                    }
+                });
             };
             
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
+            ws.onclose = (event) => {
+                console.log('WebSocket disconnected', event.code, event.reason);
                 isConnecting = false; // Reset connection flag
                 
                 // Don't auto-reconnect if we're waiting for reboot (we handle that separately)
                 if (!waitingForReboot) {
-                    // Only show reconnect message if not already reconnecting
-                    if (!wsReconnectTimer) {
-                        appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
-                        
-                        // Calculate reconnect delay with exponential backoff
-                        // Also consider WiFi signal strength for longer delays on weak signals
-                        let signalDelayMultiplier = 1;
-                        if (currentState.rssi !== null && currentState.rssi < -70) {
-                            // Weak signal: increase delay multiplier
-                            signalDelayMultiplier = 1.5;
-                        }
-                        
-                        const delay = Math.min(
-                            BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) * signalDelayMultiplier,
-                            MAX_RECONNECT_DELAY
-                        );
-                        
-                        reconnectAttempts++;
-                        
-                        wsReconnectTimer = setTimeout(() => {
-                            wsReconnectTimer = null;
-                            // Only reconnect if WebSocket is still closed
-                            if (!ws || ws.readyState === WebSocket.CLOSED) {
-                                connectWebSocket();
+                    // Only reconnect if this was an unexpected disconnect (not a clean close)
+                    // Normal close codes: 1000 (normal), 1001 (going away)
+                    // Don't reconnect on normal closes
+                    if (event.code !== 1000 && event.code !== 1001) {
+                        // Only show reconnect message if not already reconnecting
+                        if (!wsReconnectTimer) {
+                            appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
+                            
+                            // Calculate reconnect delay with exponential backoff
+                            // Also consider WiFi signal strength for longer delays on weak signals
+                            let signalDelayMultiplier = 1;
+                            if (currentState.rssi !== null && currentState.rssi < -70) {
+                                // Weak signal: increase delay multiplier
+                                signalDelayMultiplier = 1.5;
                             }
-                        }, delay);
+                            
+                            const delay = Math.min(
+                                BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) * signalDelayMultiplier,
+                                MAX_RECONNECT_DELAY
+                            );
+                            
+                            reconnectAttempts++;
+                            
+                            wsReconnectTimer = setTimeout(() => {
+                                wsReconnectTimer = null;
+                                // Clear ws reference before reconnecting
+                                ws = null;
+                                // Only reconnect if no active connection exists
+                                if (!isConnecting) {
+                                    connectWebSocket();
+                                }
+                            }, delay);
+                        }
                     }
                 } else {
                     console.log('WebSocket closed, waiting for ESP32 reboot...');
                 }
+                // Clear ws reference after handling
+                ws = null;
             };
             
             ws.onerror = (error) => {
