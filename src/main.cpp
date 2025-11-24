@@ -139,7 +139,7 @@ bool sensorErrorNotified = false;
 bool tankLowNotified = false;
 
 // ========== SERIAL MONITOR (WebSocket) ==========
-#define LOG_BUFFER_SIZE 50
+#define LOG_BUFFER_SIZE 200  // Increased to store more boot messages
 String logBuffer[LOG_BUFFER_SIZE];
 int logBufferIndex = 0;
 int logBufferCount = 0;
@@ -153,15 +153,17 @@ String pendingMessage = "";
 bool hasPendingMessage = false;
 
 // Custom print function that sends to both Serial and WebSocket
+// IMPORTANT: ALWAYS adds to buffer, even if no WebSocket clients connected
 void serialLog(const char* message) {
+    // Always print to Serial
     Serial.print(message);
     
-    // Add to buffer
+    // ALWAYS add to buffer (even if no WebSocket clients yet) - this ensures boot messages are stored
     logBuffer[logBufferIndex] = String(message);
     logBufferIndex = (logBufferIndex + 1) % LOG_BUFFER_SIZE;
     if (logBufferCount < LOG_BUFFER_SIZE) logBufferCount++;
     
-    // Send to all WebSocket clients with improved rate limiting
+    // Send to all WebSocket clients with improved rate limiting (only if clients connected)
     if (ws.count() > 0) {
         unsigned long now = millis();
         if (now - lastWebSocketSend >= WEBSOCKET_MIN_INTERVAL) {
@@ -213,15 +215,23 @@ void sendTelegramMessage(String message);
 void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 
                      AwsEventType type, void *arg, uint8_t *data, size_t len) {
     if (type == WS_EVT_CONNECT) {
-        Serial.printf("WebSocket client #%u connected\n", client->id());
+        serialLogF("WebSocket client #%u connected\n", client->id());
         
-        // Send log history to new client
-        for (int i = 0; i < logBufferCount; i++) {
-            int idx = (logBufferIndex - logBufferCount + i + LOG_BUFFER_SIZE) % LOG_BUFFER_SIZE;
-            client->text(logBuffer[idx]);
+        // Send complete log history to new client
+        // Send all messages from buffer as one large batch for better performance
+        if (logBufferCount > 0) {
+            String fullHistory = "";
+            for (int i = 0; i < logBufferCount; i++) {
+                int idx = (logBufferIndex - logBufferCount + i + LOG_BUFFER_SIZE) % LOG_BUFFER_SIZE;
+                fullHistory += logBuffer[idx];
+            }
+            // Send entire history at once (ESP32 can handle this)
+            if (fullHistory.length() > 0) {
+                client->text(fullHistory);
+            }
         }
     } else if (type == WS_EVT_DISCONNECT) {
-        Serial.printf("WebSocket client #%u disconnected\n", client->id());
+        serialLogF("WebSocket client #%u disconnected\n", client->id());
     }
 }
 
@@ -655,7 +665,7 @@ void sendTelegramMessage(String message) {
 
 // ========== INITIALIZE TEMPERATURE SENSORS ==========
 void initSensors() {
-    Serial.println("[Sensor] Initializing DS18B20 sensors on GPIO4...");
+    serialLogLn("[Sensor] Initializing DS18B20 sensors on GPIO4...");
     sensors.begin();
     
     // Wait a bit for sensors to stabilize
@@ -663,24 +673,26 @@ void initSensors() {
     
     int deviceCount = sensors.getDeviceCount();
     
-    Serial.printf("[Sensor] Found %d DS18B20 sensor(s) on OneWire bus\n", deviceCount);
+    serialLogF("[Sensor] Found %d DS18B20 sensor(s) on OneWire bus\n", deviceCount);
     
     if (deviceCount == 0) {
-        Serial.println("[Sensor] ERROR: No sensors found! Check wiring:");
-        Serial.println("  - Red wire (VDD) -> 3.3V");
-        Serial.println("  - Black wire (GND) -> GND");
-        Serial.println("  - Yellow wire (DQ) -> GPIO4");
-        Serial.println("  - 4.7kΩ resistor between GPIO4 and 3.3V");
+        serialLogLn("[Sensor] ERROR: No sensors found! Check wiring:");
+        serialLogLn("  - Red wire (VDD) -> 3.3V");
+        serialLogLn("  - Black wire (GND) -> GND");
+        serialLogLn("  - Yellow wire (DQ) -> GPIO4");
+        serialLogLn("  - 4.7kΩ resistor between GPIO4 and 3.3V");
     }
     
     if (deviceCount >= 1) {
         sensors.getAddress(sensor1Address, 0);
         sensor1Found = true;
-        Serial.print("[Sensor] Sensor 1 (Vorlauf) address: ");
+        serialLog("[Sensor] Sensor 1 (Vorlauf) address: ");
         for (uint8_t i = 0; i < 8; i++) {
-            Serial.printf("%02X", sensor1Address[i]);
+            char hexStr[3];
+            sprintf(hexStr, "%02X", sensor1Address[i]);
+            serialLog(hexStr);
         }
-        Serial.println();
+        serialLogLn("");
     } else {
         sensor1Found = false;
     }
@@ -688,15 +700,17 @@ void initSensors() {
     if (deviceCount >= 2) {
         sensors.getAddress(sensor2Address, 1);
         sensor2Found = true;
-        Serial.print("[Sensor] Sensor 2 (Rücklauf) address: ");
+        serialLog("[Sensor] Sensor 2 (Rücklauf) address: ");
         for (uint8_t i = 0; i < 8; i++) {
-            Serial.printf("%02X", sensor2Address[i]);
+            char hexStr[3];
+            sprintf(hexStr, "%02X", sensor2Address[i]);
+            serialLog(hexStr);
         }
-        Serial.println();
+        serialLogLn("");
     } else {
         sensor2Found = false;
         if (deviceCount < 2) {
-            Serial.println("[Sensor] WARNING: Less than 2 sensors found. Using single sensor for both values.");
+            serialLogLn("[Sensor] WARNING: Less than 2 sensors found. Using single sensor for both values.");
         }
     }
 }
@@ -958,21 +972,21 @@ void loadSettings() {
     
     prefs.end();
     
-    Serial.println("=== Settings loaded from NVS ===");
-    Serial.printf("Mode: %s\n", state.mode.c_str());
-    Serial.printf("Heating: %s\n", state.heatingOn ? "ON" : "OFF");
-    Serial.printf("Pump: %s\n", state.pumpOn ? "ON" : "OFF");
-    Serial.printf("Pump Manual Mode: %s\n", state.pumpManualMode ? "ON" : "OFF");
-    Serial.printf("Temp ON: %.1f°C\n", state.tempOn);
-    Serial.printf("Temp OFF: %.1f°C\n", state.tempOff);
-    Serial.printf("Frost Protection: %s (%.1f°C)\n", 
+    serialLogLn("=== Settings loaded from NVS ===");
+    serialLogF("Mode: %s\n", state.mode.c_str());
+    serialLogF("Heating: %s\n", state.heatingOn ? "ON" : "OFF");
+    serialLogF("Pump: %s\n", state.pumpOn ? "ON" : "OFF");
+    serialLogF("Pump Manual Mode: %s\n", state.pumpManualMode ? "ON" : "OFF");
+    serialLogF("Temp ON: %.1f°C\n", state.tempOn);
+    serialLogF("Temp OFF: %.1f°C\n", state.tempOff);
+    serialLogF("Frost Protection: %s (%.1f°C)\n", 
                  state.frostProtectionEnabled ? "ON" : "OFF", 
                  state.frostProtectionTemp);
-    Serial.printf("Schedules loaded: %d\n", MAX_SCHEDULES);
+    serialLogF("Schedules loaded: %d\n", MAX_SCHEDULES);
     
     // Safety check: If heating was ON, ensure pump is also ON
     if (state.heatingOn && !state.pumpOn) {
-        Serial.println("⚠️ SAFETY: Heating was ON but pump OFF - correcting pump state");
+        serialLogLn("⚠️ SAFETY: Heating was ON but pump OFF - correcting pump state");
         state.pumpOn = true;
     }
 }
@@ -1014,7 +1028,7 @@ void saveSettings() {
 
 // ========== WIFI SETUP ==========
 bool setupWiFi() {
-    Serial.println("=== WiFi Initialization (Robust Mode) ===");
+    serialLogLn("=== WiFi Initialization (Robust Mode) ===");
     
     // STEP 1: Complete WiFi stack reset - start from scratch
     WiFi.persistent(false);  // Don't save credentials to NVS - always use secrets.h
@@ -1034,9 +1048,9 @@ bool setupWiFi() {
     WiFi.setSleep(false);          // Disable WiFi sleep mode for stability
     
     // STEP 4: Print diagnostics
-    Serial.printf("ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
-    Serial.printf("Connecting to: '%s'\n", WIFI_SSID);
-    Serial.printf("Password length: %d characters\n", strlen(WIFI_PASSWORD));
+    serialLogF("ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
+    serialLogF("Connecting to: '%s'\n", WIFI_SSID);
+    serialLogF("Password length: %d characters\n", strlen(WIFI_PASSWORD));
     
     // STEP 5: Try connection with multiple strategies
     const int MAX_RETRIES = 3;
@@ -1044,7 +1058,7 @@ bool setupWiFi() {
     
     for (int retry = 0; retry < MAX_RETRIES && !connected; retry++) {
         if (retry > 0) {
-            Serial.printf("\n--- Retry %d/%d ---\n", retry + 1, MAX_RETRIES);
+            serialLogF("\n--- Retry %d/%d ---\n", retry + 1, MAX_RETRIES);
             
             // Complete reset before retry
             WiFi.disconnect(true);
@@ -1058,7 +1072,7 @@ bool setupWiFi() {
         }
         
         // Start connection attempt
-        Serial.print("Connecting");
+        serialLog("Connecting");
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         
         // Wait for connection with progress indication
@@ -1067,18 +1081,18 @@ bool setupWiFi() {
         
         while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < WIFI_TIMEOUT_MS) {
             delay(500);
-            Serial.print(".");
+            serialLog(".");
             dotCount++;
             
             if (dotCount % 10 == 0) {
                 int elapsed = (millis() - startTime) / 1000;
                 int remaining = (WIFI_TIMEOUT_MS - (millis() - startTime)) / 1000;
-                Serial.printf(" (%ds / %ds remaining)", elapsed, remaining);
-                Serial.println();
-                Serial.print("Still connecting");
+                serialLogF(" (%ds / %ds remaining)", elapsed, remaining);
+                serialLogLn("");
+                serialLog("Still connecting");
             }
         }
-        Serial.println();
+        serialLogLn("");
         
         // Check connection status
         if (WiFi.status() == WL_CONNECTED) {
@@ -1089,32 +1103,35 @@ bool setupWiFi() {
             
             // Verify connection is still active
             if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0,0,0,0)) {
-                Serial.println("✅ WiFi connected successfully!");
-                Serial.printf("   IP Address: %s\n", WiFi.localIP().toString().c_str());
-                Serial.printf("   Gateway:    %s\n", WiFi.gatewayIP().toString().c_str());
-                Serial.printf("   Subnet:     %s\n", WiFi.subnetMask().toString().c_str());
-                Serial.printf("   RSSI:       %d dBm\n", WiFi.RSSI());
+                serialLogLn("✅ WiFi connected successfully!");
+                serialLogF("   IP Address: %s\n", WiFi.localIP().toString().c_str());
+                serialLogF("   Gateway:    %s\n", WiFi.gatewayIP().toString().c_str());
+                serialLogF("   Subnet:     %s\n", WiFi.subnetMask().toString().c_str());
+                serialLogF("   RSSI:       %d dBm\n", WiFi.RSSI());
                 
                 // Additional stability delay
                 delay(1000);
                 return true;
             } else {
-                Serial.println("⚠️ Connection lost immediately after connect");
+                serialLogLn("⚠️ Connection lost immediately after connect");
                 connected = false;
             }
         } else {
-            Serial.printf("❌ Connection attempt %d failed\n", retry + 1);
-            Serial.printf("   WiFi status: %d\n", WiFi.status());
+            serialLogF("❌ Connection attempt %d failed\n", retry + 1);
+            serialLogF("   WiFi status: %d\n", WiFi.status());
         }
     }
     
     // All attempts failed
-    Serial.println("❌ WiFi connection FAILED after all attempts!");
-    Serial.println("WiFi Diagnostics:");
+    serialLogLn("❌ WiFi connection FAILED after all attempts!");
+    serialLogLn("WiFi Diagnostics:");
+    // WiFi.printDiag sends directly to Serial - capture it manually
+    Serial.print("WiFi Diagnostics: ");
     WiFi.printDiag(Serial);
-    Serial.printf("SSID tried: '%s'\n", WIFI_SSID);
-    Serial.printf("Password length: %d\n", strlen(WIFI_PASSWORD));
-    Serial.printf("MAC Address: %s\n", WiFi.macAddress().c_str());
+    Serial.println();
+    serialLogF("SSID tried: '%s'\n", WIFI_SSID);
+    serialLogF("Password length: %d\n", strlen(WIFI_PASSWORD));
+    serialLogF("MAC Address: %s\n", WiFi.macAddress().c_str());
     
     return false;
 }
@@ -1766,7 +1783,7 @@ void setupWebServer() {
     // Initialize WebSocket for Serial Monitor
     ws.onEvent(onWebSocketEvent);
     server.addHandler(&ws);
-    Serial.println("WebSocket initialized at /ws");
+    serialLogLn("WebSocket initialized at /ws");
     
     // Initialize OTA Updates (custom handler)
     server.on("/update", HTTP_POST, 
@@ -1901,7 +1918,7 @@ void setupWebServer() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n\n=== ESP32 Heater Control v2.2.0 ===");
+    serialLogLn("\n\n=== ESP32 Heater Control v2.2.0 ===");
     
     bootTime = millis();
     
@@ -1909,11 +1926,11 @@ void setup() {
     // Use Open-Drain mode: HIGH = floating (Relay OFF via internal pull-up), LOW = driven (Relay ON)
     pinMode(HEATING_RELAY_PIN, OUTPUT_OPEN_DRAIN);
     digitalWrite(HEATING_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
-    Serial.println("[Setup] GPIO23 (Heating) initialized to OPEN-DRAIN HIGH (Relay OFF)");
+    serialLogLn("[Setup] GPIO23 (Heating) initialized to OPEN-DRAIN HIGH (Relay OFF)");
     
     pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
     digitalWrite(PUMP_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
-    Serial.println("[Setup] GPIO22 (Pump) initialized to OPEN-DRAIN HIGH (Relay OFF)");
+    serialLogLn("[Setup] GPIO22 (Pump) initialized to OPEN-DRAIN HIGH (Relay OFF)");
     // Initialize ultrasonic sensor pins
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
@@ -1992,16 +2009,16 @@ void setup() {
     // Final check: Ensure WiFi is still connected before declaring setup complete
     if (wifiConnected) {
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("=== Setup complete ===");
-            Serial.printf("Access via: http://%s/\n", WiFi.localIP().toString().c_str());
+            serialLogLn("=== Setup complete ===");
+            serialLogF("Access via: http://%s/\n", WiFi.localIP().toString().c_str());
             Serial.printf("Or via mDNS: http://%s.local/\n", HOSTNAME);
         } else {
             Serial.println("⚠️ WARNING: WiFi disconnected during setup!");
             Serial.println("Will retry in loop()...");
         }
     } else {
-        Serial.println("=== Setup complete (AP Mode) ===");
-        Serial.println("Access via: http://192.168.4.1/");
+        serialLogLn("=== Setup complete (AP Mode) ===");
+        serialLogLn("Access via: http://192.168.4.1/");
     }
     
     // Fetch weather data once at startup (only if WiFi connected and location is set)

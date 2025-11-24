@@ -2850,19 +2850,34 @@
         let waitingForReboot = false; // Flag to indicate we're waiting for ESP32 to reboot after OTA
         let rebootCheckInterval = null; // Interval for checking WebSocket reconnection after reboot
         let reconnectAttempts = 0; // Counter for reconnection attempts
+        let isConnecting = false; // Prevent multiple simultaneous connection attempts
         const MAX_RECONNECT_DELAY = 30000; // Maximum delay: 30 seconds
         const BASE_RECONNECT_DELAY = 2000; // Base delay: 2 seconds
         
         function connectWebSocket() {
             if (isLocalMode) return;
             
+            // Prevent multiple simultaneous connection attempts
+            if (isConnecting) {
+                console.log('WebSocket connection already in progress, skipping...');
+                return;
+            }
+            
+            // If already connected or connecting, don't create another connection
+            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+                console.log('WebSocket already connected or connecting, skipping...');
+                return;
+            }
+            
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
             
+            isConnecting = true;
             ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
                 console.log('WebSocket connected');
+                isConnecting = false; // Connection successful
                 appendSerialLog('// WebSocket verbunden\n', '#27ae60');
                 
                 // Reset reconnect attempts on successful connection
@@ -2925,41 +2940,47 @@
                 appendSerialLog(event.data);
             };
             
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-            
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
+                isConnecting = false; // Reset connection flag
                 
                 // Don't auto-reconnect if we're waiting for reboot (we handle that separately)
                 if (!waitingForReboot) {
-                    appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
-                    
-                    // Calculate reconnect delay with exponential backoff
-                    // Also consider WiFi signal strength for longer delays on weak signals
-                    let signalDelayMultiplier = 1;
-                    if (currentState.rssi !== null && currentState.rssi < -70) {
-                        // Weak signal: increase delay multiplier
-                        signalDelayMultiplier = 1.5;
-                    }
-                    
-                    const delay = Math.min(
-                        BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) * signalDelayMultiplier,
-                        MAX_RECONNECT_DELAY
-                    );
-                    
-                    reconnectAttempts++;
-                    
+                    // Only show reconnect message if not already reconnecting
                     if (!wsReconnectTimer) {
+                        appendSerialLog('// WebSocket getrennt, versuche Wiederverbindung...\n', '#e74c3c');
+                        
+                        // Calculate reconnect delay with exponential backoff
+                        // Also consider WiFi signal strength for longer delays on weak signals
+                        let signalDelayMultiplier = 1;
+                        if (currentState.rssi !== null && currentState.rssi < -70) {
+                            // Weak signal: increase delay multiplier
+                            signalDelayMultiplier = 1.5;
+                        }
+                        
+                        const delay = Math.min(
+                            BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) * signalDelayMultiplier,
+                            MAX_RECONNECT_DELAY
+                        );
+                        
+                        reconnectAttempts++;
+                        
                         wsReconnectTimer = setTimeout(() => {
                             wsReconnectTimer = null;
-                            connectWebSocket();
+                            // Only reconnect if WebSocket is still closed
+                            if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                connectWebSocket();
+                            }
                         }, delay);
                     }
                 } else {
                     console.log('WebSocket closed, waiting for ESP32 reboot...');
                 }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                isConnecting = false; // Reset on error
             };
         }
         
