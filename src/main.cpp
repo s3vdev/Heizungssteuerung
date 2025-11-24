@@ -128,6 +128,8 @@ unsigned long lastWeatherFetch = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
 unsigned long lastHeatingOffTime = 0;  // Timestamp when heating was turned OFF (for pump cooldown)
+unsigned long scheduledRebootTime = 0;  // Timestamp for scheduled reboot after OTA update
+bool rebootScheduled = false;  // Flag to indicate reboot is scheduled
 
 // Telegram notification flags
 bool sensorErrorNotified = false;
@@ -1009,39 +1011,88 @@ void saveSettings() {
 
 // ========== WIFI SETUP ==========
 bool setupWiFi() {
-    // Enable auto-reconnect and auto-connect for better stability after reboot
-    WiFi.setAutoReconnect(true);
-    WiFi.setAutoConnect(true);
+    // CRITICAL: Fully reset WiFi stack before connecting (especially important after OTA update)
+    Serial.println("=== WiFi Initialization ===");
     
-    // Disable WiFi power save mode to prevent disconnections
-    WiFi.setSleep(false);
+    // Disconnect and clear any previous WiFi state
+    WiFi.disconnect(true);  // true = erase stored credentials
+    delay(100);
     
+    // Disable auto-connect to prevent using saved credentials from NVS
+    WiFi.setAutoConnect(false);
+    WiFi.setAutoReconnect(true);  // Enable auto-reconnect for runtime (not boot)
+    
+    // Set mode to station
     WiFi.mode(WIFI_STA);
+    delay(100);
+    
+    Serial.printf("ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
+    Serial.printf("Connecting to WiFi '%s'...\n", WIFI_SSID);
+    
+    // Start connection with credentials from secrets.h
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     
-    Serial.printf("Connecting to WiFi '%s'", WIFI_SSID);
-    
+    // Wait for connection with progress dots - try with longer timeout after OTA
     unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_TIMEOUT_MS) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println();
+    int attempts = 0;
+    int maxRetries = 2;  // Try up to 2 times
+    bool connected = false;
     
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.print("WiFi connected! IP: ");
+    for (int retry = 0; retry < maxRetries && !connected; retry++) {
+        if (retry > 0) {
+            Serial.printf("\nRetry %d/%d: Reconnecting...\n", retry + 1, maxRetries);
+            WiFi.disconnect(true);
+            delay(500);
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+            startAttemptTime = millis();  // Reset timer for retry
+        }
+        
+        attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_TIMEOUT_MS) {
+            delay(500);
+            Serial.print(".");
+            attempts++;
+            if (attempts % 10 == 0) {
+                Serial.printf(" (%d/%d seconds)\n", (millis() - startAttemptTime) / 1000, WIFI_TIMEOUT_MS / 1000);
+                Serial.print("Still connecting");
+            }
+        }
+        Serial.println();
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            connected = true;
+            break;
+        } else {
+            Serial.printf("Connection attempt %d failed, status: %d\n", retry + 1, WiFi.status());
+        }
+    }
+    
+    if (connected && WiFi.status() == WL_CONNECTED) {
+        Serial.print("✅ WiFi connected! IP: ");
         Serial.println(WiFi.localIP());
-        Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
-        Serial.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("Subnet: %s\n", WiFi.subnetMask().toString().c_str());
+        Serial.printf("   RSSI: %d dBm\n", WiFi.RSSI());
+        Serial.printf("   Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+        Serial.printf("   Subnet: %s\n", WiFi.subnetMask().toString().c_str());
         
         // Wait a bit more to ensure WiFi is fully stable
         delay(1000);
         return true;
     }
     
-    Serial.println("WiFi connection failed!");
-    Serial.println("Will retry in loop() or start Access Point mode");
+    // Detailed error diagnostics
+    Serial.println("❌ WiFi connection failed!");
+    Serial.printf("   Status code: %d (WL_DISCONNECTED)\n", WiFi.status());
+    
+    // Print WiFi diagnostics (ESP32-specific)
+    Serial.println("   WiFi Diagnostics:");
+    WiFi.printDiag(Serial);
+    
+    // Print MAC address for MAC filtering checks
+    Serial.printf("   ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
+    Serial.printf("   SSID attempted: '%s'\n", WIFI_SSID);
+    Serial.printf("   Password length: %d characters\n", strlen(WIFI_PASSWORD));
+    
+    Serial.println("   Will retry in loop() or start Access Point mode");
     return false;
 }
 
@@ -1234,7 +1285,7 @@ void setupWebServer() {
         serialLogLn(state.heatingOn ? "OFF" : "ON");
         
         // Read current pin state BEFORE toggle
-        int pinBefore = digitalRead(RELAY_PIN);
+        int pinBefore = digitalRead(HEATING_RELAY_PIN);
         serialLogF("[API] GPIO23 BEFORE toggle: %s\n", pinBefore == LOW ? "LOW" : "HIGH");
         Serial.flush();
         
@@ -1242,7 +1293,7 @@ void setupWebServer() {
         
         // Read pin state AFTER toggle
         delay(100);
-        int pinAfter = digitalRead(RELAY_PIN);
+        int pinAfter = digitalRead(HEATING_RELAY_PIN);
         serialLogF("[API] GPIO23 AFTER toggle: %s\n", pinAfter == LOW ? "LOW" : "HIGH");
         Serial.flush();
         lastToggleTime = millis();
@@ -1701,13 +1752,18 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("OTA Update successful, rebooting in 10 seconds...");
-                Serial.println("(Extended delay for VPN/network stability)");
-                // Give the client extra time to receive the response before rebooting
-                // Extended delay for VPN connections and network stability
-                delay(10000);
+                Serial.println("OTA Update successful, scheduling reboot in 5 seconds...");
                 Serial.flush();
-                ESP.restart();
+                // Schedule reboot after a short delay to allow response to be sent
+                scheduledRebootTime = millis() + 5000;  // 5 seconds
+                rebootScheduled = true;
+                // Close the connection immediately
+                if (request->client()) {
+                    request->client()->close();
+                }
+            } else {
+                Serial.println("OTA Update FAILED - no reboot");
+                Update.printError(Serial);
             }
         },
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
@@ -1749,13 +1805,18 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("LittleFS OTA Update successful, rebooting in 10 seconds...");
-                Serial.println("(Extended delay for VPN/network stability)");
-                // Give the client extra time to receive the response before rebooting
-                // Extended delay for VPN connections and network stability
-                delay(10000);
+                Serial.println("LittleFS OTA Update successful, scheduling reboot in 5 seconds...");
                 Serial.flush();
-                ESP.restart();
+                // Schedule reboot after a short delay to allow response to be sent
+                scheduledRebootTime = millis() + 5000;  // 5 seconds
+                rebootScheduled = true;
+                // Close the connection immediately
+                if (request->client()) {
+                    request->client()->close();
+                }
+            } else {
+                Serial.println("LittleFS OTA Update FAILED - no reboot");
+                Update.printError(Serial);
             }
         },
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
@@ -1800,9 +1861,6 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
     Serial.println("\n\n=== ESP32 Heater Control v2.2.0 ===");
-    Serial.println("=== RELAY TEST MODE ===");
-    Serial.println("GPIO23 will toggle every 2 seconds");
-    Serial.println("Watch relay LED and listen for clicks!\n");
     
     bootTime = millis();
     
@@ -1815,48 +1873,18 @@ void setup() {
     pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
     digitalWrite(PUMP_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
     Serial.println("[Setup] GPIO22 (Pump) initialized to OPEN-DRAIN HIGH (Relay OFF)");
-    
-    // Verify initial state
-    int initHeatingState = digitalRead(HEATING_RELAY_PIN);
-    int initPumpState = digitalRead(PUMP_RELAY_PIN);
-    Serial.printf("[Setup] GPIO23 read back: %s\n", initHeatingState == LOW ? "LOW" : "HIGH");
-    Serial.printf("[Setup] GPIO22 read back: %s\n", initPumpState == LOW ? "LOW" : "HIGH");
-    Serial.flush();
-    
-    // Test: Toggle once to ensure it works
-    delay(1000);
-    Serial.println("\n[Test] Setting GPIO23 to LOW (Relay ON) - should click!");
-    digitalWrite(RELAY_PIN, LOW);
-    delay(100);
-    int readBack = digitalRead(RELAY_PIN);
-    Serial.printf("[Test] GPIO23 read back: %s\n", readBack == LOW ? "LOW" : "HIGH");
-    delay(2000);
-    
-    Serial.println("[Test] Setting GPIO23 to HIGH (Relay OFF) - should click!");
-    digitalWrite(RELAY_PIN, HIGH);
-    delay(100);
-    readBack = digitalRead(RELAY_PIN);
-    Serial.printf("[Test] GPIO23 read back: %s\n", readBack == LOW ? "LOW" : "HIGH");
-    delay(2000);
-    
-    Serial.println("\n[Test] Starting continuous toggle in loop()...\n");
-    Serial.println("=== SKIPPING NORMAL SETUP - RELAY TEST MODE ===\n");
-    Serial.flush();
-    
-    // SKIP ALL NORMAL SETUP IN TEST MODE - just return and let loop() handle toggling
-    // return;  // COMMENTED OUT - BACK TO NORMAL MODE
-    
-    // NORMAL SETUP - NOW ACTIVE AGAIN
     // Initialize ultrasonic sensor pins
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
     digitalWrite(TRIG_PIN, LOW);
     
     if (!LittleFS.begin(true)) {
-        Serial.println("LittleFS mount failed!");
-        return;
+        Serial.println("⚠️ WARNING: LittleFS mount failed!");
+        Serial.println("Continuing without filesystem - Web server may not work properly");
+        // DON'T return - continue anyway, maybe filesystem isn't critical
+    } else {
+        Serial.println("LittleFS mounted successfully");
     }
-    Serial.println("LittleFS mounted");
     
     // Initialize sensors
     initSensors();
@@ -2007,6 +2035,40 @@ void loop() {
     
     // NORMAL MODE
     unsigned long now = millis();
+    
+    // Handle scheduled reboot after OTA update
+    if (rebootScheduled && now >= scheduledRebootTime) {
+        Serial.println("=== Executing scheduled reboot after OTA update ===");
+        Serial.println("Closing all connections...");
+        
+        // Close all WebSocket connections
+        ws.closeAll();
+        delay(100);
+        
+        // Stop the web server gracefully
+        Serial.println("Stopping server...");
+        server.end();
+        delay(500);
+        
+        // CRITICAL: Reset WiFi state before reboot to ensure clean connection on next boot
+        // Disconnect and clear stored credentials so secrets.h is used on next boot
+        WiFi.disconnect(true);  // true = erase stored credentials from NVS
+        WiFi.setAutoConnect(false);  // Disable auto-connect - we want to use secrets.h
+        WiFi.setAutoReconnect(true);  // Enable auto-reconnect for runtime (if connection is lost)
+        delay(100);
+        Serial.println("WiFi state reset for clean connection on next boot");
+        
+        // Flush all serial output
+        Serial.flush();
+        delay(500);
+        
+        Serial.println("Rebooting in 1 second...");
+        delay(1000);
+        Serial.flush();
+        
+        ESP.restart();
+        return;  // Should never reach here, but just in case
+    }
     
     state.uptime = (now - bootTime) / 1000;
     
