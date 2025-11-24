@@ -1235,15 +1235,29 @@
                     </label>
                 </div>
                 
+                <div class="toggle-control" id="pumpControl" style="display: none;">
+                    <div class="toggle-label">Pumpe</div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="pumpToggle" onchange="togglePump()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
                 <div id="autoInfo" style="display: none;">
                     <div class="info-box">
                         Automatische Temperaturregelung aktiv
+                        <div style="margin-top: 8px; font-size: 0.9em; color: #7f8c8d;">
+                            Heizung: <span id="autoHeatingStatus">AUS</span> | Pumpe: <span id="autoPumpStatus">AUS</span>
+                        </div>
                     </div>
                 </div>
                 
                 <div id="scheduleInfo" style="display: none;">
                     <div class="info-box">
                         Zeitplansteuerung aktiv
+                        <div style="margin-top: 8px; font-size: 0.9em; color: #7f8c8d;">
+                            Heizung: <span id="scheduleHeatingStatus">AUS</span> | Pumpe: <span id="schedulePumpStatus">AUS</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -1537,6 +1551,8 @@
             tempVorlauf: null,
             tempRuecklauf: null,
             heating: false,
+            pump: false,
+            pumpManualMode: false,
             mode: 'manual',
             tempOn: 30,
             tempOff: 40,
@@ -1588,7 +1604,7 @@
                 document.getElementById('demoBadge').classList.add('active');
                 document.getElementById('demoControls').classList.add('active');
                 
-                currentState.version = 'v2.1.0-demo';
+                currentState.version = 'v2.2.0-demo';
                 currentState.tempVorlauf = 45.3;
                 currentState.tempRuecklauf = 22.2;
                 currentState.ntpSynced = true;
@@ -1662,7 +1678,7 @@
         // Demo Serial Monitor Logs
         let demoLogInterval = null;
         const demoLogs = [
-            '=== ESP32 Heater Control v2.1.0 ===',
+            '=== ESP32 Heater Control v2.2.0 ===',
             'LittleFS mounted',
             'Found 2 DS18B20 sensor(s)',
             'WiFi connected: FRITZ!Box 6890 MO',
@@ -1688,7 +1704,7 @@
             
             // Initial boot logs
             appendSerialLog('// WebSocket verbunden\n', '#27ae60');
-            setTimeout(() => appendSerialLog('=== ESP32 Heater Control v2.1.0-demo ===\n'), 500);
+            setTimeout(() => appendSerialLog('=== ESP32 Heater Control v2.2.0-demo ===\n'), 500);
             setTimeout(() => appendSerialLog('LittleFS mounted\n'), 700);
             setTimeout(() => appendSerialLog('Found 2 DS18B20 sensor(s)\n'), 900);
             setTimeout(() => appendSerialLog('WiFi connected: Demo-Network\n'), 1100);
@@ -1733,29 +1749,59 @@
         function startSimulation() {
             if (!isLocalMode || simulationInterval) return;
             
+            // Initialize temperatures to cold water (12.5°C) if not set
+            if (currentState.tempVorlauf === null || currentState.tempRuecklauf === null) {
+                currentState.tempVorlauf = 12.5;
+                currentState.tempRuecklauf = 12.5;
+            }
+            
             simulationInterval = setInterval(() => {
                 const now = new Date();
                 currentState.currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
                 
-                if (currentState.tempVorlauf !== null) {
+                // Only simulate temperature changes when heating is ON
+                // When heating is OFF, temperatures stay frozen at cold water level (12.5°C)
+                if (currentState.tempVorlauf !== null && currentState.tempRuecklauf !== null) {
                     if (currentState.heating) {
+                        // Heating ON: temperatures rise
                         currentState.tempVorlauf += Math.random() * 0.5;
                         currentState.tempRuecklauf += Math.random() * 0.4;
+                        
+                        // Clamp to realistic ranges
+                        currentState.tempVorlauf = Math.max(20, Math.min(80, currentState.tempVorlauf));
+                        currentState.tempRuecklauf = Math.max(15, Math.min(70, currentState.tempRuecklauf));
                     } else {
-                        currentState.tempVorlauf -= Math.random() * 0.3;
-                        currentState.tempRuecklauf -= Math.random() * 0.3;
+                        // Heating OFF: temperatures are frozen at cold water level (12.5°C)
+                        // No changes - temperatures stay exactly at 12.5°C
+                        currentState.tempVorlauf = 12.5;
+                        currentState.tempRuecklauf = 12.5;
                     }
-                    
-                    currentState.tempVorlauf = Math.max(20, Math.min(80, currentState.tempVorlauf));
-                    currentState.tempRuecklauf = Math.max(15, Math.min(70, currentState.tempRuecklauf));
                 }
                 
-                if (currentState.mode === 'auto' && currentState.tempRuecklauf !== null) {
-                    if (currentState.tempRuecklauf <= currentState.tempOn && !currentState.heating) {
-                        currentState.heating = true;
-                    } else if (currentState.tempRuecklauf >= currentState.tempOff && currentState.heating) {
+                // Auto mode logic: only when heating is ON and temperatures are being simulated
+                if (currentState.mode === 'auto' && currentState.heating && currentState.tempRuecklauf !== null) {
+                    // Check if we should turn heating OFF (when temp reaches tempOff)
+                    if (currentState.tempRuecklauf >= currentState.tempOff) {
                         currentState.heating = false;
+                        // Pump can turn OFF after cooldown (simplified: immediately in demo, unless manual mode)
+                        if (currentState.mode !== 'manual' || !currentState.pumpManualMode) {
+                            currentState.pump = false;
+                        }
                     }
+                }
+                
+                // Auto mode: check if we should turn heating ON (only if currently OFF)
+                // Since temperatures are frozen at 12.5°C when heating is OFF,
+                // we check if tempOn is above 12.5°C to trigger heating
+                if (currentState.mode === 'auto' && !currentState.heating && currentState.tempOn > 12.5) {
+                    // tempOn is above cold water temp, so heating should turn ON
+                    currentState.heating = true;
+                    currentState.pump = true;
+                }
+                
+                // Safety: Ensure pump is ON when heating is ON
+                if (currentState.heating && !currentState.pump) {
+                    currentState.pump = true;
                 }
                 
                 currentState.rssi = -68 + Math.floor(Math.random() * 8) - 4;
@@ -1807,6 +1853,8 @@
                     tempVorlauf: data.tempVorlauf,
                     tempRuecklauf: data.tempRuecklauf,
                     heating: data.heating,
+                    pump: data.pump !== undefined ? data.pump : false,
+                    pumpManualMode: data.pumpManualMode !== undefined ? data.pumpManualMode : false,
                     mode: data.mode,
                     tempOn: data.tempOn,
                     tempOff: data.tempOff,
@@ -2351,6 +2399,7 @@
             
             // Show/hide controls
             document.getElementById('manualControl').style.display = currentState.mode === 'manual' ? 'flex' : 'none';
+            document.getElementById('pumpControl').style.display = currentState.mode === 'manual' ? 'flex' : 'none';
             document.getElementById('autoInfo').style.display = currentState.mode === 'auto' ? 'block' : 'none';
             document.getElementById('scheduleInfo').style.display = currentState.mode === 'schedule' ? 'block' : 'none';
             
@@ -2359,6 +2408,22 @@
             
             // Toggle & settings
             document.getElementById('heatingToggle').checked = currentState.heating;
+            document.getElementById('pumpToggle').checked = currentState.pump;
+            
+            // Update pump toggle state - disable if heating is ON (safety: pump must be ON when heating is ON)
+            const pumpToggle = document.getElementById('pumpToggle');
+            if (currentState.heating) {
+                pumpToggle.disabled = true;
+                pumpToggle.checked = true;  // Force checked when heating is ON
+            } else {
+                pumpToggle.disabled = false;
+            }
+            
+            // Update status displays in auto/schedule modes
+            document.getElementById('autoHeatingStatus').textContent = currentState.heating ? 'EIN' : 'AUS';
+            document.getElementById('autoPumpStatus').textContent = currentState.pump ? 'EIN' : 'AUS';
+            document.getElementById('scheduleHeatingStatus').textContent = currentState.heating ? 'EIN' : 'AUS';
+            document.getElementById('schedulePumpStatus').textContent = currentState.pump ? 'EIN' : 'AUS';
             document.getElementById('statTempOn').textContent = currentState.tempOn + '°C';
             document.getElementById('statTempOff').textContent = currentState.tempOff + '°C';
             document.getElementById('tempOn').value = currentState.tempOn;
@@ -2584,9 +2649,79 @@
                 }
             } else {
                 // Demo mode
-                currentState.heating = document.getElementById('heatingToggle').checked;
+                    currentState.heating = document.getElementById('heatingToggle').checked;
+                    updateUI();
+                    appendSerialLog(`Manual toggle: Heater ${currentState.heating ? 'ON' : 'OFF'}\n`, '#e67e22');
+                }
+            }
+        
+        async function togglePump() {
+            if (currentState.mode !== 'manual') {
+                console.log('[Toggle] Not in manual mode, ignoring pump toggle');
+                // Revert toggle state
+                document.getElementById('pumpToggle').checked = !document.getElementById('pumpToggle').checked;
+                return;
+            }
+            
+            // Safety check: Cannot turn pump OFF if heating is ON
+            if (currentState.heating && document.getElementById('pumpToggle').checked === false) {
+                console.log('[Toggle] Cannot turn pump OFF while heating is ON');
+                showToast('⚠️ Pumpe kann nicht ausgeschaltet werden, solange die Heizung läuft!', 'warning', 3000);
+                // Revert toggle state
+                document.getElementById('pumpToggle').checked = true;
+                return;
+            }
+            
+            console.log('[Toggle] Toggling pump, current state:', currentState.pump);
+            
+            if (!isLocalMode) {
+                try {
+                    console.log('[Toggle] Sending API request to /api/toggle-pump');
+                    const response = await fetch('/api/toggle-pump', {
+                        method: 'GET',
+                        headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+                    });
+                    
+                    console.log('[Toggle] Response status:', response.status);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('[Toggle] API call failed:', response.status, errorText);
+                        // Revert toggle state
+                        document.getElementById('pumpToggle').checked = !document.getElementById('pumpToggle').checked;
+                        try {
+                            const errorData = JSON.parse(errorText);
+                            if (errorData.error) {
+                                showToast('⚠️ ' + errorData.error, 'warning', 3000);
+                            }
+                        } catch (e) {}
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    console.log('[Toggle] API response:', data);
+                    
+                    // Update state from server response
+                    currentState.pump = data.pump;
+                    currentState.pumpManualMode = data.pumpManualMode;
+                    
+                    // Update UI
+                    updateUI();
+                    
+                    // Also update status to sync
+                    await updateStatus();
+                } catch (e) { 
+                    console.error('[Toggle] Error:', e);
+                    // Revert toggle state on error
+                    document.getElementById('pumpToggle').checked = !document.getElementById('pumpToggle').checked;
+                    showToast('Fehler beim Umschalten der Pumpe', 'error');
+                }
+            } else {
+                // Demo mode
+                currentState.pump = document.getElementById('pumpToggle').checked;
+                currentState.pumpManualMode = currentState.pump;
                 updateUI();
-                appendSerialLog(`Manual toggle: Heater ${currentState.heating ? 'ON' : 'OFF'}\n`, '#e67e22');
+                appendSerialLog(`Manual toggle: Pump ${currentState.pump ? 'ON' : 'OFF'}\n`, '#3498db');
             }
         }
         

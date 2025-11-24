@@ -1,6 +1,6 @@
 # ESP32 Heizungssteuerung - Web UI
 
-**Version: 2.1.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
+**Version: 2.2.0** | ESP32 DevKit V1 | Arduino Framework | PlatformIO
 
 Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mit Web-Interface.
 
@@ -94,7 +94,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | **ESP32 DevKit V1 (WROOM-32) USB-C (30 PIN)** | 1x | Mikrocontroller mit WiFi & Bluetooth |
 | **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
 | **JSN-SR04T Ultraschall-Sensor** (wasserdicht) | 1x | Tankfüllstand-Messung (optional) |
-| **1-Kanal Relais-Modul** (Active-Low) | 1x | Heizungsschaltung (bis 10A) |
+| **1-Kanal Relais-Modul** (Active-Low) | 2x | Heizungsschaltung (GPIO23) & Umwälzpumpe (GPIO22), je bis 10A |
 | **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Optional - nur bei externer 12V/24V Versorgung nötig |
 | **USB-Netzteil** (5V, 1-2A) | 1x | Alternative zu LM2596S - alle Komponenten können direkt am ESP32 betrieben werden |
 | **4.7 kΩ Widerstand** | 1x | Pull-Up für OneWire-Bus |
@@ -110,9 +110,12 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | JSN-SR04T ECHO | GPIO18 | Ultraschall Echo |
 | JSN-SR04T VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | JSN-SR04T GND | GND | Gemeinsame Masse |
-| Relais IN | GPIO23 | Active-Low (LOW=EIN, HIGH=AUS) |
-| Relais VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
-| Relais GND | GND | Gemeinsame Masse |
+| Relais #1 IN (Heizung) | GPIO23 | Active-Low (LOW=EIN, HIGH=AUS) |
+| Relais #1 VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
+| Relais #1 GND | GND | Gemeinsame Masse |
+| Relais #2 IN (Pumpe) | GPIO22 | Active-Low (LOW=EIN, HIGH=AUS) |
+| Relais #2 VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
+| Relais #2 GND | GND | Gemeinsame Masse |
 | ESP32 5V Pin | USB-Netzteil (5V, 1-2A) ODER LM2596S OUT+ | Stromversorgung |
 
 ### Sensor-Anschluss
@@ -136,10 +139,20 @@ Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durc
 
 ### Schaltlogik
 - **Relais Active-Low mit Open-Drain-Mode**: 
-  - `GPIO23 = LOW` (OUTPUT-Mode) → Relais EIN → Heizung läuft
-  - `GPIO23 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Heizung ruht
+  - **Heizungsrelais (GPIO23)**:
+    - `GPIO23 = LOW` (OUTPUT-Mode) → Relais EIN → Heizung läuft
+    - `GPIO23 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Heizung ruht
+  - **Pumpenrelais (GPIO22)**:
+    - `GPIO22 = LOW` (OUTPUT-Mode) → Relais EIN → Umwälzpumpe läuft
+    - `GPIO22 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Pumpe ruht
   
   **Hinweis:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig. Daher wird Open-Drain-Mode für HIGH verwendet (Pin ist "floating" und wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen).
+
+### Pumpensteuerung
+- **Sicherheitsregel**: Heizung EIN → Pumpe MUSS EIN sein (automatisch erzwungen)
+- **Nachlauf**: Pumpe bleibt nach Heizung AUS noch 180 Sekunden (3 Minuten) an
+- **Manueller Modus**: Pumpe kann unabhängig geschaltet werden (nur wenn Heizung AUS ist)
+- **Automatik/Zeitplan**: Pumpe folgt automatisch der Heizung
 
 ## 🚀 Installation
 
@@ -224,6 +237,8 @@ pio run -t buildfs
 
 #### 1. Manueller Modus
 - Direktes Ein-/Ausschalten der Heizung über Toggle-Schalter
+- Separater Toggle für Umwälzpumpe (kann unabhängig geschaltet werden, wenn Heizung AUS ist)
+- **Sicherheitsregel**: Wenn Heizung EIN geschaltet wird, wird Pumpe automatisch EIN gesetzt
 - Zustand wird in NVS gespeichert
 - Ideal für Testzwecke oder temporäre Nutzung
 
@@ -232,9 +247,10 @@ pio run -t buildfs
 - **EIN-Temperatur**: Unterschreitet die Rücklauftemp. diesen Wert → Heizung EIN
 - **AUS-Temperatur**: Überschreitet die Rücklauftemp. diesen Wert → Heizung AUS
 - **Beispiel**: EIN=30°C, AUS=40°C
-  - Rücklauf fällt auf 29°C → Heizung AN
-  - Rücklauf steigt auf 40°C → Heizung AUS
-  - Rücklauf fällt wieder unter 30°C → Heizung AN
+  - Rücklauf fällt auf 29°C → Heizung AN → Pumpe automatisch AN
+  - Rücklauf steigt auf 40°C → Heizung AUS → Pumpe läuft noch 3 Minuten nach
+  - Rücklauf fällt wieder unter 30°C → Heizung AN → Pumpe automatisch AN
+- **Pumpe**: Folgt automatisch der Heizung (EIN bei Heizung EIN, AUS nach 3 Min. Nachlauf)
 - Verhindert häufiges Ein-/Ausschalten (Relaisschutz)
 
 #### 3. Zeitplan-Modus (Scheduler)
@@ -245,6 +261,7 @@ pio run -t buildfs
 - **Übernacht-Zeitfenster** möglich (z.B. 22:00 - 06:00)
 - **NTP-Synchronisation** erforderlich (automatisch bei WiFi-Verbindung)
 - Jedes Zeitfenster einzeln aktivierbar
+- **Pumpe**: Folgt automatisch der Heizung (EIN bei Heizung EIN, AUS nach 3 Min. Nachlauf)
 
 ### Fallback: Access Point Mode
 
@@ -270,6 +287,8 @@ Liefert aktuellen Status:
   "tempVorlauf": 48.5,
   "tempRuecklauf": 35.5,
   "heating": true,
+  "pump": true,
+  "pumpManualMode": false,
   "mode": "schedule",
   "tempOn": 30.0,
   "tempOff": 40.0,
@@ -315,11 +334,28 @@ Response:
 ```json
 {
   "success": true,
-  "heating": true
+  "heating": true,
+  "pump": true
 }
 ```
 
-**Hinweis**: Nur im manuellen Modus verfügbar!
+**Hinweis**: Nur im manuellen Modus verfügbar! Wenn Heizung EIN geschaltet wird, wird Pumpe automatisch EIN gesetzt.
+
+### GET /api/toggle-pump
+Schaltet Pumpe im manuellen Modus um (benötigt Basic Auth)
+
+Response:
+```json
+{
+  "success": true,
+  "pump": true,
+  "pumpManualMode": true
+}
+```
+
+**Hinweis**: 
+- Nur im manuellen Modus verfügbar!
+- Pumpe kann nicht AUS geschaltet werden, wenn Heizung EIN ist (Sicherheitsregel)
 
 ### POST /api/settings
 Speichert Einstellungen (benötigt Basic Auth)

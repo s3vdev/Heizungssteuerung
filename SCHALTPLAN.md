@@ -23,24 +23,27 @@
                              │                                    │
                    ┌─────────┴──────────┐                        │
                    │                    │                        │
-        ┌──────────▼──────────┐  ┌─────▼──────────────┐        │
-        │                     │  │                     │        │
-        │    ESP32 DevKit     │  │   Relais-Modul     │        │
-        │                     │  │   (Active-Low!)    │        │
-        │  ┌───────────────┐  │  │                     │        │
-        │  │ PIN-Belegung: │  │  │  VCC ←── 5V        │        │
-        │  │               │  │  │  GND ←── GND       │        │
-        │  │ 5V   ←── 5V   │  │  │  IN  ←── GPIO23    │────────┤
-        │  │ GND  ←── GND  │  │  │                     │        │
-        │  │               │  │  │  COM ────────┐      │        │
-        │  │ 3.3V ──→ +    │  │  │  NO  ────────┼──────┼────────┘
-        │  │               │  │  │              │      │    zu Heizgerät
-        │  │ GPIO4 ──→ BUS │  │  └──────────────┼──────┘
-        │  │               │  │                  │
-        │  │ GPIO23 ──→ RLY│  │                  │
-        │  └───────────────┘  │           Phase ─┘
-        │                     │           (230V!)
-        └──────────┬──────────┘
+        ┌──────────▼──────────┐  ┌─────▼──────────────┐  ┌─────▼──────────────┐
+        │                     │  │                     │  │                     │
+        │    ESP32 DevKit     │  │ Relais #1 (Heizung) │  │ Relais #2 (Pumpe)  │
+        │                     │  │   (Active-Low!)     │  │   (Active-Low!)    │
+        │  ┌───────────────┐  │  │                     │  │                     │
+        │  │ PIN-Belegung: │  │  │  VCC ←── 5V        │  │  VCC ←── 5V        │
+        │  │               │  │  │  GND ←── GND       │  │  GND ←── GND       │
+        │  │ 5V   ←── 5V   │  │  │  IN  ←── GPIO23   │  │  IN  ←── GPIO22   │
+        │  │ GND  ←── GND  │  │  │                     │  │                     │
+        │  │               │  │  │  COM ────────┐     │  │  COM ────────┐     │
+        │  │ 3.3V ──→ +    │  │  │  NO  ────────┼─────┼─│  NO  ────────┼─────┼─
+        │  │               │  │  │              │     │ │              │     │ │
+        │  │ GPIO4 ──→ BUS │  │  └──────────────┼─────┘ └──────────────┼─────┘ │
+        │  │               │  │                  │                      │       │
+        │  │ GPIO23 ──→ RLY│  │                  │                      │       │
+        │  │ GPIO22 ──→ RLY│  │                  │                      │       │
+        │  └───────────────┘  │            +12V ─┘              Phase ─┘       │
+        │                     │           (12V)                 (230V!)        │
+        └──────────┬──────────┘                                              │
+                   │                                                          │
+                   │                    zu Heizgerät        zu Umwälzpumpe ───┘
                    │
                    │ GPIO4 (OneWire Bus)
                    │
@@ -73,11 +76,12 @@
 | **5V** | USB-Netzteil (5V, 1-2A) ODER LM2596S OUT+ | Stromversorgung |
 | **GND** | Gemeinsame Masse | GND zu allem! |
 | **3.3V** | DS18B20 VDD (beide) + Pull-Up | Versorgung Sensoren |
-| **5V** (Ausgang) | Relais VCC + JSN-SR04T VCC (optional) | Versorgung für 5V-Komponenten |
+| **5V** (Ausgang) | Relais VCC (beide) + JSN-SR04T VCC (optional) | Versorgung für 5V-Komponenten |
 | **GPIO4** | DS18B20 DATA (beide) | OneWire Bus |
 | **GPIO5** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
 | **GPIO18** | JSN-SR04T ECHO | Ultraschall Echo (optional) |
-| **GPIO23** | Relais IN | Steuerung (Active-Low!) |
+| **GPIO23** | Relais #1 IN (Heizung) | Steuerung (Active-Low!) |
+| **GPIO22** | Relais #2 IN (Pumpe) | Steuerung (Active-Low!) |
 
 ### DS18B20 Sensoren (beide identisch verdrahtet)
 
@@ -89,23 +93,45 @@
 
 **WICHTIG:** 4.7kΩ Widerstand zwischen GPIO4 und 3.3V!
 
-### Relais-Modul (1-Kanal, Active-Low)
+### Relais-Module (2x 1-Kanal, Active-Low)
+
+#### Relais #1: Heizung (GPIO23) - 12V DC
 
 | Relais Pin | Verbindung | Beschreibung |
 |------------|------------|--------------|
 | **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
 | **GND** | GND | Masse |
 | **IN** | ESP32 GPIO23 | Steuersignal |
-| **COM** | Phase (L) | Eingang 230V |
-| **NO** | zu Heizgerät | Ausgang (Normal Open) |
+| **COM** | +12V (gelbes Kabel) | Eingang 12V DC |
+| **NO** | zu Heizgerät (+12V) | Ausgang (Normal Open) |
 
-**Active-Low Logik mit Open-Drain-Mode:**
-- GPIO23 = **LOW** (OUTPUT-Mode, 0V) → Relais **EIN** → Heizung läuft
-- GPIO23 = **HIGH** (OUTPUT_OPEN_DRAIN-Mode, floating) → Relais **AUS** → Heizung aus
+#### Relais #2: Umwälzpumpe (GPIO22) - 230V AC
+
+| Relais Pin | Verbindung | Beschreibung |
+|------------|------------|--------------|
+| **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
+| **GND** | GND | Masse |
+| **IN** | ESP32 GPIO22 | Steuersignal |
+| **COM** | Phase (L) | Eingang 230V AC |
+| **NO** | zu Umwälzpumpe | Ausgang (Normal Open) |
+
+**WICHTIG:** 
+- **Relais #1 (Heizung)**: Schaltet 12V DC (gelbes Kabel) - GND durchgehend verbunden!
+- **Relais #2 (Pumpe)**: Schaltet 230V AC - **NIEMALS N oder PE durch Relais!**
+
+**Active-Low Logik mit Open-Drain-Mode (beide Relais identisch):**
+- GPIO23/GPIO22 = **LOW** (OUTPUT-Mode, 0V) → Relais **EIN** → Heizung/Pumpe läuft
+- GPIO23/GPIO22 = **HIGH** (OUTPUT_OPEN_DRAIN-Mode, floating) → Relais **AUS** → Heizung/Pumpe aus
 
 **WICHTIG:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig! Daher muss Open-Drain-Mode verwendet werden:
 - HIGH wird als "floating" gesetzt → wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen
 - LOW wird im normalen OUTPUT-Mode gesetzt → Pin zieht aktiv auf GND
+
+**Pumpensteuerung:**
+- **Sicherheitsregel**: Heizung EIN → Pumpe MUSS automatisch EIN sein
+- **Nachlauf**: Pumpe bleibt nach Heizung AUS noch 180 Sekunden (3 Minuten) an
+- **Manueller Modus**: Pumpe kann unabhängig geschaltet werden (nur wenn Heizung AUS ist)
+- **Automatik/Zeitplan**: Pumpe folgt automatisch der Heizung
 
 ### JSN-SR04T Ultraschall-Sensor (optional)
 
@@ -138,10 +164,11 @@
 | Komponente | Anschluss | Stromaufnahme |
 |------------|-----------|---------------|
 | ESP32 | USB-Netzteil (5V, 1-2A) | ~100-250mA |
-| Relais VCC | ESP32 5V Pin | ~70-150mA |
+| Relais #1 VCC (Heizung) | ESP32 5V Pin | ~70-150mA |
+| Relais #2 VCC (Pumpe) | ESP32 5V Pin | ~70-150mA |
 | JSN-SR04T VCC (optional) | ESP32 5V Pin | ~15-30mA |
 | DS18B20 (beide) | ESP32 3.3V Pin | ~3-5mA |
-| **Gesamt** | **USB-Netzteil** | **~188-435mA** ✅ |
+| **Gesamt** | **USB-Netzteil** | **~258-585mA** ✅ |
 
 **Vorteile:**
 - Einfache Installation (nur USB-Kabel + Netzteil)
@@ -154,7 +181,7 @@
 |-----|------------|----------|
 | **IN+** | Netzteil + | 12V oder 24V |
 | **IN-** | Netzteil - | GND |
-| **OUT+** | ESP32 5V + Relais VCC + JSN-SR04T VCC | 5V (einstellen!) |
+| **OUT+** | ESP32 5V + Relais VCC (beide) + JSN-SR04T VCC | 5V (einstellen!) |
 | **OUT-** | Gemeinsame Masse | GND |
 
 **Einstellung:** Potentiometer drehen, bis LED-Anzeige **5.0V** zeigt!
@@ -176,7 +203,8 @@
    - ESP32 sollte booten (LED leuchtet) ✅
 
 **Alle Komponenten können direkt am ESP32 angeschlossen werden:**
-- Relais VCC → ESP32 5V Pin
+- Relais #1 VCC (Heizung) → ESP32 5V Pin
+- Relais #2 VCC (Pumpe) → ESP32 5V Pin
 - JSN-SR04T VCC → ESP32 5V Pin
 - DS18B20 VDD → ESP32 3.3V Pin
 
@@ -215,15 +243,21 @@
 
 ### Phase 3: Relais (OHNE Last!)
 
-7. **Relais anschließen:**
+7. **Relais #1 (Heizung) anschließen:**
    - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
    - GND → Gemeinsame Masse
    - IN → ESP32 GPIO23
 
-8. **Test:**
+8. **Relais #2 (Pumpe) anschließen:**
+   - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
+   - GND → Gemeinsame Masse
+   - IN → ESP32 GPIO22
+
+9. **Test:**
    - Manuellen Modus im Dashboard aktivieren
-   - Toggle-Button klicken
-   - Relais sollte **klicken**!
+   - Heizung-Toggle klicken → Relais #1 sollte **klicken**!
+   - Pumpe-Toggle klicken → Relais #2 sollte **klicken**!
+   - **Sicherheitstest**: Heizung EIN schalten → Pumpe sollte automatisch EIN gehen
 
 ### Phase 3.5: JSN-SR04T Sensor (optional)
 
@@ -244,36 +278,39 @@
     - Im Dashboard: Tankhöhe (cm) und Tankkapazität (Liter) eingeben
     - Füllstand sollte jetzt angezeigt werden
 
-### Phase 4: Heizung (MIT VORSICHT!)
+### Phase 4: Heizung und Pumpe
 
-⚠️ **ACHTUNG: AB HIER 230V NETZSPANNUNG!** ⚠️
-
-12. **STROMZUFUHR AUSSCHALTEN!**
-    - Sicherung raus
-    - Mit Spannungsprüfer testen
-    - Zweimal prüfen!
-
-13. **W1209 ausbauen:**
+12. **Alte Steuerung ausbauen:**
     - Alle Verbindungen dokumentieren (Foto!)
     - Abklemmen
     - Beiseite legen
 
-14. **Relais einbauen:**
+13. **Relais #1 (Heizung) einbauen - 12V DC:**
+    - +12V (gelbes Kabel) von Versorgung → Relais COM
+    - Relais NO → Heizgerät (+12V)
+    - GND durchgehend verbunden (nicht durch Relais!)
+    - **Polung beachten**: +12V / GND
+
+14. **Relais #2 (Pumpe) einbauen - 230V AC:**
+    - ⚠️ **STROMZUFUHR AUSSCHALTEN!** Sicherung raus, Spannungsfreiheit prüfen!
     - Phase (L) von Verteilung → Relais COM
-    - Relais NO → Heizgerät
+    - Relais NO → Umwälzpumpe
     - **NIEMALS N oder PE durch Relais!**
+    - Neutral (N) und Schutzleiter (PE) durchgehend verbunden
 
 15. **Erste Inbetriebnahme:**
     - Nochmals ALLE Verbindungen prüfen
-    - Sicherung wieder rein
+    - **Heizung**: Polung prüfen (+12V / GND)
+    - **Pumpe**: Isolationsprüfung, FI-Schalter prüfen
+    - Sicherung wieder rein (nur für Pumpe-Bereich)
     - Im manuellen Modus testen
     - Kurze Test-Intervalle (5 Min ein, 5 Min aus)
 
 ## Sicherheitshinweise
 
-### ⚠️ LEBENSGEFAHR durch 230V Netzspannung!
+### ⚠️ LEBENSGEFAHR durch 230V Netzspannung (Pumpe)!
 
-✅ **IMMER beachten:**
+✅ **IMMER beachten bei Pumpe (230V AC):**
 - Vor Arbeiten **Sicherung rausdrehen**
 - Mit **Spannungsprüfer** Spannungsfreiheit prüfen
 - **NIE** unter Spannung arbeiten
@@ -282,16 +319,25 @@
 - Gehäuse mit **PE** verbinden
 - Nach Montage: **Isolationsprüfung**
 
+✅ **Bei Heizung (12V DC) beachten:**
+- Vor Arbeiten **Stromzufuhr trennen**
+- Mit **Multimeter** Spannung prüfen
+- **Polung beachten**: +12V (gelbes Kabel) / GND
+- **GND (Masse)** DURCHGEHEND verbinden (nicht durch Relais!)
+- Nach Montage: **Polarität prüfen**
+
 ✅ **Relais-Spezifikationen prüfen:**
-- Mindestens **10A bei 230V AC**
+- **Relais #1 (Heizung)**: Mindestens **10A bei 12V DC**
+- **Relais #2 (Pumpe)**: Mindestens **10A bei 230V AC**
 - Für **Widerstandslast** geeignet
 - Bei induktiver Last (Motor): höhere Spezifikation!
 
-✅ **Brand-Schutz:**
+✅ **Sicherheit:**
 - Alle Verbindungen **fest verschrauben**
 - **Aderendhülsen** verwenden
 - ESP32 in **nicht brennbarem Gehäuse**
-- **Fehlerstromschutzschalter (FI)** vorgeschaltet
+- **Sicherung (max. 10A)** vorgeschaltet empfohlen
+- **Fehlerstromschutzschalter (FI)** für 230V-Bereich vorgeschaltet
 
 ## Montage-Tipps
 
@@ -302,9 +348,9 @@
 - Beschriftung aller Anschlüsse
 
 ### Kabelführung
-- Sensorkabel **vom** 230V-Bereich trennen
+- Sensorkabel ordentlich führen
 - Zugentlastung an allen Kabeln
-- Beschriftung: "Vorlauf", "Rücklauf"
+- Beschriftung: "Vorlauf", "Rücklauf", "+12V", "GND"
 - Reserve-Länge einplanen
 
 ### Befestigung
@@ -319,12 +365,14 @@
 - [ ] 4.7kΩ Pull-Up vorhanden
 - [ ] LM2596S auf 5V eingestellt
 - [ ] Beide Sensoren werden erkannt
-- [ ] Relais klickt im Test
+- [ ] Beide Relais klicken im Test
+- [ ] Sicherheitstest: Heizung EIN → Pumpe automatisch EIN
 - [ ] Alle Schrauben fest
 - [ ] Keine blanken Drähte
 - [ ] Gehäuse geschlossen
-- [ ] FI-Schalter vorhanden
-- [ ] Erdung geprüft
+- [ ] **Heizung**: Polung geprüft (+12V / GND)
+- [ ] **Pumpe**: FI-Schalter vorhanden, Isolationsprüfung durchgeführt
+- [ ] Sicherung (max. 10A) vorhanden
 
 ## Erstes Monitoring (nach Installation)
 

@@ -14,13 +14,15 @@
 #include "secrets.h"
 
 // ========== PIN CONFIGURATION ==========
-#define RELAY_PIN 23          // GPIO23 for relay control (Active-Low)
+#define HEATING_RELAY_PIN 23  // GPIO23 for heating relay control (Active-Low)
+#define PUMP_RELAY_PIN 22     // GPIO22 for pump relay control (Active-Low)
+#define RELAY_PIN 23          // Legacy alias for backward compatibility
 #define ONE_WIRE_BUS 4        // GPIO4 for DS18B20 sensors (both on same bus)
 #define TRIG_PIN 5            // GPIO5 for JSN-SR04T TRIG
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.1.0"     // Version anzeigen im Dashboard
+#define FIRMWARE_VERSION "v2.2.0"     // Version anzeigen im Dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -33,6 +35,7 @@
 #define TANK_READ_INTERVAL 5000       // Read tank level every 5 seconds
 #define ULTRASONIC_TIMEOUT 30000      // 30ms timeout for echo (max ~5m range)
 #define WEATHER_UPDATE_INTERVAL 600000  // Update weather every 10 minutes
+#define PUMP_COOLDOWN_MS 180000       // Pump stays ON for 180 seconds after heating turns OFF (3 minutes)
 
 // ========== GLOBAL OBJECTS ==========
 AsyncWebServer server(80);
@@ -67,6 +70,8 @@ struct Statistics {
 // ========== GLOBAL STATE ==========
 struct SystemState {
     bool heatingOn = false;
+    bool pumpOn = false;          // Pump state (circulation pump)
+    bool pumpManualMode = false;  // Manual pump override (only in manual mode)
     float tempVorlauf = NAN;    // Forward flow temperature
     float tempRuecklauf = NAN;  // Return flow temperature
     String mode = "manual";     // "manual", "auto", "schedule", or "frost"
@@ -122,6 +127,7 @@ unsigned long lastTankRead = 0;
 unsigned long lastWeatherFetch = 0;
 unsigned long bootTime = 0;
 unsigned long lastStateChangeTime = 0;
+unsigned long lastHeatingOffTime = 0;  // Timestamp when heating was turned OFF (for pump cooldown)
 
 // Telegram notification flags
 bool sensorErrorNotified = false;
@@ -214,6 +220,52 @@ void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     }
 }
 
+// ========== PUMP CONTROL (Active-Low) ==========
+void setPump(bool on, bool manualOverride = false) {
+    bool stateChanged = (on != state.pumpOn);
+    
+    if (stateChanged) {
+        serialLog("[Pump] Setting pump to ");
+        serialLog(on ? "ON" : "OFF");
+        serialLog(" - GPIO22: ");
+        serialLogLn(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+        Serial.flush();
+    }
+    
+    state.pumpOn = on;
+    
+    // Active-Low: LOW = ON, HIGH = OFF (same as heating relay)
+    if (on) {
+        // Relay ON: Set to LOW using normal OUTPUT mode
+        pinMode(PUMP_RELAY_PIN, OUTPUT);
+        digitalWrite(PUMP_RELAY_PIN, LOW);
+    } else {
+        // Relay OFF: Set to HIGH using OPEN-DRAIN mode (floating, pulled up by relay module)
+        pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
+        digitalWrite(PUMP_RELAY_PIN, HIGH);
+    }
+    
+    // Verify pin state was set correctly (only log if verification fails)
+    delay(50);
+    int actualState = digitalRead(PUMP_RELAY_PIN);
+    bool stateCorrect = (on && actualState == LOW) || (!on && actualState != LOW);
+    
+    if (!stateCorrect && stateChanged) {
+        serialLog("[Pump] ⚠️ GPIO22 read back mismatch! Expected: ");
+        serialLog(on ? "LOW" : "HIGH");
+        serialLog(", Got: ");
+        serialLogLn(actualState == LOW ? "LOW" : "HIGH");
+    }
+    
+    if (stateChanged) {
+        serialLog("[Pump] Pump ");
+        serialLog(on ? "ON" : "OFF");
+        serialLog(" - GPIO22 actual: ");
+        serialLogLn(actualState == LOW ? "LOW" : "HIGH");
+        Serial.flush();
+    }
+}
+
 // ========== RELAY CONTROL (Active-Low) ==========
 void setHeater(bool on, bool saveToNVS = true) {
     bool stateChanged = (on != state.heatingOn);
@@ -227,6 +279,14 @@ void setHeater(bool on, bool saveToNVS = true) {
     }
     
     state.heatingOn = on;
+    
+    // CRITICAL SAFETY RULE: If heating is turned ON, pump MUST be ON
+    // If heating is turned OFF, pump will follow after cooldown period (unless manual override)
+    if (on && !state.pumpOn) {
+        serialLogLn("[Relay] ⚠️ SAFETY: Heating ON but pump OFF - forcing pump ON!");
+        setPump(true, false);
+    }
+    
     // Active-Low: LOW = ON, HIGH = OFF
     // IMPORTANT: HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig!
     // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
@@ -240,17 +300,24 @@ void setHeater(bool on, bool saveToNVS = true) {
     
     if (on) {
         // Relay ON: Set to LOW using normal OUTPUT mode
-        pinMode(RELAY_PIN, OUTPUT);
-        digitalWrite(RELAY_PIN, LOW);
+        pinMode(HEATING_RELAY_PIN, OUTPUT);
+        digitalWrite(HEATING_RELAY_PIN, LOW);
+        // Ensure pump is ON when heating is ON
+        if (!state.pumpOn) {
+            setPump(true, false);
+        }
+        lastHeatingOffTime = 0;  // Reset cooldown timer
     } else {
         // Relay OFF: Set to HIGH using OPEN-DRAIN mode (floating, pulled up by relay module)
-        pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
-        digitalWrite(RELAY_PIN, HIGH);
+        pinMode(HEATING_RELAY_PIN, OUTPUT_OPEN_DRAIN);
+        digitalWrite(HEATING_RELAY_PIN, HIGH);
+        // Start cooldown timer for pump (pump will turn OFF after cooldown unless manual override)
+        lastHeatingOffTime = millis();
     }
     
     // Verify pin state was set correctly (only log if verification fails)
     delay(50); // Longer delay for relay to respond
-    int actualState = digitalRead(RELAY_PIN);
+    int actualState = digitalRead(HEATING_RELAY_PIN);
     bool stateCorrect = (on && actualState == LOW) || (!on && actualState != LOW);
     
     if (!stateCorrect) {
@@ -777,18 +844,61 @@ void automaticControl() {
     // Between EIN and AUS: maintain current state (hysteresis zone)
 }
 
+// ========== PUMP COOLDOWN LOGIC ==========
+void handlePumpCooldown() {
+    // Only handle cooldown if heating is OFF and we're not in manual mode with manual pump override
+    if (state.heatingOn) {
+        return;  // Heating is ON, pump should be ON (handled by setHeater)
+    }
+    
+    // In manual mode: if pumpManualMode is true, keep pump ON regardless of heating state
+    if (state.mode == "manual" && state.pumpManualMode) {
+        if (!state.pumpOn) {
+            setPump(true, true);  // Turn pump ON due to manual override
+        }
+        return;
+    }
+    
+    // Check if cooldown period has elapsed
+    if (lastHeatingOffTime > 0 && state.pumpOn) {
+        unsigned long elapsed = millis() - lastHeatingOffTime;
+        
+        // After cooldown period, turn pump OFF (unless manual override in manual mode)
+        if (elapsed >= PUMP_COOLDOWN_MS) {
+            if (!(state.mode == "manual" && state.pumpManualMode)) {
+                serialLogF("[Pump] Cooldown period (%lu seconds) elapsed, turning pump OFF\n", PUMP_COOLDOWN_MS / 1000);
+                setPump(false, false);
+                lastHeatingOffTime = 0;  // Reset timer
+            }
+        } else {
+            // Still in cooldown period
+            unsigned long remaining = (PUMP_COOLDOWN_MS - elapsed) / 1000;
+            // Only log every 30 seconds to avoid spam
+            static unsigned long lastCooldownLog = 0;
+            if (millis() - lastCooldownLog > 30000) {
+                serialLogF("[Pump] Cooldown: %lu seconds remaining\n", remaining);
+                lastCooldownLog = millis();
+            }
+        }
+    }
+}
+
 // ========== FAILSAFE CHECK ==========
 void checkFailsafe() {
-    // If both sensors fail, turn off
+    // If both sensors fail, turn off both heating and pump
     if (isnan(state.tempVorlauf) && isnan(state.tempRuecklauf)) {
         if (state.heatingOn) {
             Serial.println("FAILSAFE: All sensors failed, turning heater OFF");
             setHeater(false);
         }
+        if (state.pumpOn) {
+            Serial.println("FAILSAFE: All sensors failed, turning pump OFF");
+            setPump(false, false);
+        }
         
         // Send Telegram notification once
         if (!sensorErrorNotified && isTelegramConfigured()) {
-            sendTelegramMessage("⚠️ SENSOR-FEHLER!\n\nBeide Temperatursensoren ausgefallen.\nHeizung wurde automatisch deaktiviert.");
+            sendTelegramMessage("⚠️ SENSOR-FEHLER!\n\nBeide Temperatursensoren ausgefallen.\nHeizung und Pumpe wurden automatisch deaktiviert.");
             sensorErrorNotified = true;
         }
     } else {
@@ -800,6 +910,12 @@ void checkFailsafe() {
             sensorErrorNotified = false;
         }
     }
+    
+    // CRITICAL SAFETY CHECK: Ensure heating is never ON without pump
+    if (state.heatingOn && !state.pumpOn) {
+        serialLogLn("[FAILSAFE] ⚠️ CRITICAL: Heating ON but pump OFF - forcing pump ON!");
+        setPump(true, false);
+    }
 }
 
 // ========== LOAD SETTINGS FROM NVS ==========
@@ -807,6 +923,8 @@ void loadSettings() {
     prefs.begin("heater", true);
     
     state.heatingOn = prefs.getBool("heatingOn", false);
+    state.pumpOn = prefs.getBool("pumpOn", false);
+    state.pumpManualMode = prefs.getBool("pumpManualMode", false);
     state.mode = prefs.getString("mode", "manual");
     state.tempOn = prefs.getFloat("tempOn", 30.0);
     state.tempOff = prefs.getFloat("tempOff", 40.0);
@@ -838,12 +956,20 @@ void loadSettings() {
     Serial.println("=== Settings loaded from NVS ===");
     Serial.printf("Mode: %s\n", state.mode.c_str());
     Serial.printf("Heating: %s\n", state.heatingOn ? "ON" : "OFF");
+    Serial.printf("Pump: %s\n", state.pumpOn ? "ON" : "OFF");
+    Serial.printf("Pump Manual Mode: %s\n", state.pumpManualMode ? "ON" : "OFF");
     Serial.printf("Temp ON: %.1f°C\n", state.tempOn);
     Serial.printf("Temp OFF: %.1f°C\n", state.tempOff);
     Serial.printf("Frost Protection: %s (%.1f°C)\n", 
                  state.frostProtectionEnabled ? "ON" : "OFF", 
                  state.frostProtectionTemp);
     Serial.printf("Schedules loaded: %d\n", MAX_SCHEDULES);
+    
+    // Safety check: If heating was ON, ensure pump is also ON
+    if (state.heatingOn && !state.pumpOn) {
+        Serial.println("⚠️ SAFETY: Heating was ON but pump OFF - correcting pump state");
+        state.pumpOn = true;
+    }
 }
 
 // ========== SAVE SETTINGS TO NVS ==========
@@ -865,8 +991,10 @@ void saveSettings() {
     prefs.putFloat("longitude", state.longitude);
     prefs.putString("locationName", state.locationName);
     
-    // Save heating state for all modes (needed to restore after reboot)
+    // Save heating and pump state for all modes (needed to restore after reboot)
     prefs.putBool("heatingOn", state.heatingOn);
+    prefs.putBool("pumpOn", state.pumpOn);
+    prefs.putBool("pumpManualMode", state.pumpManualMode);
     
     // Save schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -968,6 +1096,8 @@ void setupWebServer() {
         }
         
         doc["heating"] = state.heatingOn;
+        doc["pump"] = state.pumpOn;
+        doc["pumpManualMode"] = state.pumpManualMode;
         doc["mode"] = state.mode;
         doc["tempOn"] = state.tempOn;
         doc["tempOff"] = state.tempOff;
@@ -1107,6 +1237,69 @@ void setupWebServer() {
         StaticJsonDocument<64> doc;
         doc["success"] = true;
         doc["heating"] = state.heatingOn;
+        doc["pump"] = state.pumpOn;  // Include pump state in response
+        
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+    
+    // API: Toggle pump (manual mode only)
+    server.on("/api/toggle-pump", HTTP_GET, [](AsyncWebServerRequest *request) {
+        serialLogLn("[API] /api/toggle-pump called");
+        Serial.flush();
+        
+        if (!request->authenticate(AUTH_USER, AUTH_PASS)) {
+            serialLogLn("[API] Authentication failed");
+            Serial.flush();
+            return request->requestAuthentication();
+        }
+        
+        if (millis() - lastToggleTime < DEBOUNCE_MS) {
+            serialLogLn("[API] Too many requests (debounce)");
+            Serial.flush();
+            request->send(429, "application/json", "{\"error\":\"Too many requests\"}");
+            return;
+        }
+        
+        if (state.mode != "manual") {
+            serialLog("[API] Not in manual mode (current: ");
+            serialLog(state.mode.c_str());
+            serialLogLn(")");
+            Serial.flush();
+            request->send(400, "application/json", "{\"error\":\"Not in manual mode\"}");
+            return;
+        }
+        
+        // Safety check: Cannot turn pump OFF if heating is ON
+        if (state.heatingOn && state.pumpOn) {
+            serialLogLn("[API] Cannot turn pump OFF while heating is ON");
+            request->send(400, "application/json", "{\"error\":\"Cannot turn pump OFF while heating is ON\"}");
+            return;
+        }
+        
+        bool newPumpState = !state.pumpOn;
+        
+        serialLog("[API] Toggling pump from ");
+        serialLog(state.pumpOn ? "ON" : "OFF");
+        serialLog(" to ");
+        serialLogLn(newPumpState ? "ON" : "OFF");
+        
+        setPump(newPumpState, true);  // Manual override
+        state.pumpManualMode = newPumpState;  // Set manual mode flag
+        
+        // Save pump state to NVS
+        prefs.begin("heater", false);
+        prefs.putBool("pumpOn", state.pumpOn);
+        prefs.putBool("pumpManualMode", state.pumpManualMode);
+        prefs.end();
+        
+        lastToggleTime = millis();
+        
+        StaticJsonDocument<128> doc;
+        doc["success"] = true;
+        doc["pump"] = state.pumpOn;
+        doc["pumpManualMode"] = state.pumpManualMode;
         
         String json;
         serializeJson(doc, json);
@@ -1142,6 +1335,25 @@ void setupWebServer() {
                     
                     if (newMode != "manual") {
                         setHeater(false, false);
+                        // Reset pump manual mode when leaving manual mode
+                        state.pumpManualMode = false;
+                    }
+                }
+            }
+            
+            // Update pump manual mode (only in manual mode)
+            if (doc.containsKey("pumpManualMode") && state.mode == "manual") {
+                bool newPumpManualMode = doc["pumpManualMode"];
+                if (newPumpManualMode != state.pumpManualMode) {
+                    state.pumpManualMode = newPumpManualMode;
+                    changed = true;
+                    
+                    // If setting manual mode to true and heating is OFF, turn pump ON
+                    if (newPumpManualMode && !state.heatingOn) {
+                        setPump(true, true);
+                    } else if (!newPumpManualMode && !state.heatingOn) {
+                        // If disabling manual mode and heating is OFF, turn pump OFF
+                        setPump(false, false);
                     }
                 }
             }
@@ -1476,9 +1688,12 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("OTA Update successful, rebooting in 3 seconds...");
+                Serial.println("OTA Update successful, rebooting in 10 seconds...");
+                Serial.println("(Extended delay for VPN/network stability)");
                 // Give the client extra time to receive the response before rebooting
-                delay(3000);
+                // Extended delay for VPN connections and network stability
+                delay(10000);
+                Serial.flush();
                 ESP.restart();
             }
         },
@@ -1521,9 +1736,12 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("LittleFS OTA Update successful, rebooting in 3 seconds...");
+                Serial.println("LittleFS OTA Update successful, rebooting in 10 seconds...");
+                Serial.println("(Extended delay for VPN/network stability)");
                 // Give the client extra time to receive the response before rebooting
-                delay(3000);
+                // Extended delay for VPN connections and network stability
+                delay(10000);
+                Serial.flush();
                 ESP.restart();
             }
         },
@@ -1568,21 +1786,28 @@ void setupWebServer() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n\n=== ESP32 Heater Control v2.1.0 ===");
+    Serial.println("\n\n=== ESP32 Heater Control v2.2.0 ===");
     Serial.println("=== RELAY TEST MODE ===");
     Serial.println("GPIO23 will toggle every 2 seconds");
     Serial.println("Watch relay LED and listen for clicks!\n");
     
     bootTime = millis();
     
+    // Initialize both relays (heating and pump) to OFF state
     // Use Open-Drain mode: HIGH = floating (Relay OFF via internal pull-up), LOW = driven (Relay ON)
-    pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
-    digitalWrite(RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
-    Serial.println("[Setup] GPIO23 initialized to OPEN-DRAIN HIGH (Relay OFF)");
+    pinMode(HEATING_RELAY_PIN, OUTPUT_OPEN_DRAIN);
+    digitalWrite(HEATING_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
+    Serial.println("[Setup] GPIO23 (Heating) initialized to OPEN-DRAIN HIGH (Relay OFF)");
+    
+    pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
+    digitalWrite(PUMP_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
+    Serial.println("[Setup] GPIO22 (Pump) initialized to OPEN-DRAIN HIGH (Relay OFF)");
     
     // Verify initial state
-    int initState = digitalRead(RELAY_PIN);
-    Serial.printf("[Setup] GPIO23 read back: %s\n", initState == LOW ? "LOW" : "HIGH");
+    int initHeatingState = digitalRead(HEATING_RELAY_PIN);
+    int initPumpState = digitalRead(PUMP_RELAY_PIN);
+    Serial.printf("[Setup] GPIO23 read back: %s\n", initHeatingState == LOW ? "LOW" : "HIGH");
+    Serial.printf("[Setup] GPIO22 read back: %s\n", initPumpState == LOW ? "LOW" : "HIGH");
     Serial.flush();
     
     // Test: Toggle once to ensure it works
@@ -1626,21 +1851,38 @@ void setup() {
     // Load settings
     loadSettings();
     
-    // Restore heater state based on mode
+    // Restore heater and pump state based on mode
     if (state.mode == "manual") {
         // Manual mode: restore saved state
+        // Restore pump first (if manual override is active)
+        if (state.pumpManualMode) {
+            setPump(state.pumpOn, true);
+        }
+        // Then restore heating (which will ensure pump is ON if heating is ON)
         setHeater(state.heatingOn, false);
     } else {
         // Auto/schedule modes: restore saved state so heater continues running after reboot
         // The control functions will adjust if needed based on current conditions
+        // Restore pump state (should follow heating in auto/schedule modes)
+        if (state.heatingOn) {
+            // If heating was ON, ensure pump is also ON
+            setPump(true, false);
+        } else {
+            // If heating was OFF, restore pump state (might be in cooldown)
+            setPump(state.pumpOn, false);
+        }
         setHeater(state.heatingOn, false);
     }
     
     bool wifiConnected = setupWiFi();
     
     if (!wifiConnected) {
+        Serial.println("WiFi connection failed, starting Access Point mode...");
         setupAccessPoint();
     } else {
+        // Wait a bit for WiFi to stabilize after reboot
+        delay(2000);
+        Serial.println("WiFi stable, setting up services...");
         setupMDNS();
         setupNTP();
         
@@ -1747,6 +1989,9 @@ void loop() {
             Serial.println("NTP time synced!");
         }
     }
+    
+    // Handle pump cooldown logic (check every second)
+    handlePumpCooldown();
     
     if (now - lastTempRead >= TEMP_READ_INTERVAL) {
         lastTempRead = now;
