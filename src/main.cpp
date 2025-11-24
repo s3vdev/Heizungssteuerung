@@ -130,6 +130,9 @@ unsigned long lastStateChangeTime = 0;
 unsigned long lastHeatingOffTime = 0;  // Timestamp when heating was turned OFF (for pump cooldown)
 unsigned long scheduledRebootTime = 0;  // Timestamp for scheduled reboot after OTA update
 bool rebootScheduled = false;  // Flag to indicate reboot is scheduled
+bool otaUpdateInProgress = false;  // Flag to prevent WiFi reconnect during OTA update
+unsigned long lastWiFiReconnectAttempt = 0;  // Rate limiting for WiFi reconnect
+const unsigned long WIFI_RECONNECT_INTERVAL = 60000;  // Only try reconnect every 60 seconds
 
 // Telegram notification flags
 bool sensorErrorNotified = false;
@@ -1011,88 +1014,108 @@ void saveSettings() {
 
 // ========== WIFI SETUP ==========
 bool setupWiFi() {
-    // CRITICAL: Fully reset WiFi stack before connecting (especially important after OTA update)
-    Serial.println("=== WiFi Initialization ===");
+    Serial.println("=== WiFi Initialization (Robust Mode) ===");
     
-    // Disconnect and clear any previous WiFi state
-    WiFi.disconnect(true);  // true = erase stored credentials
-    delay(100);
+    // STEP 1: Complete WiFi stack reset - start from scratch
+    WiFi.persistent(false);  // Don't save credentials to NVS - always use secrets.h
+    WiFi.disconnect(true);   // true = erase ALL stored credentials
+    delay(500);
     
-    // Disable auto-connect to prevent using saved credentials from NVS
-    WiFi.setAutoConnect(false);
-    WiFi.setAutoReconnect(true);  // Enable auto-reconnect for runtime (not boot)
+    WiFi.mode(WIFI_OFF);     // Turn WiFi completely OFF
+    delay(500);
     
-    // Set mode to station
+    // STEP 2: Fresh start - initialize WiFi in Station mode
     WiFi.mode(WIFI_STA);
-    delay(100);
+    delay(300);
     
+    // STEP 3: Configure WiFi settings
+    WiFi.setAutoConnect(false);    // NEVER auto-connect on boot
+    WiFi.setAutoReconnect(true);   // Auto-reconnect if connection lost during runtime
+    WiFi.setSleep(false);          // Disable WiFi sleep mode for stability
+    
+    // STEP 4: Print diagnostics
     Serial.printf("ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
-    Serial.printf("Connecting to WiFi '%s'...\n", WIFI_SSID);
+    Serial.printf("Connecting to: '%s'\n", WIFI_SSID);
+    Serial.printf("Password length: %d characters\n", strlen(WIFI_PASSWORD));
     
-    // Start connection with credentials from secrets.h
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    // Wait for connection with progress dots - try with longer timeout after OTA
-    unsigned long startAttemptTime = millis();
-    int attempts = 0;
-    int maxRetries = 2;  // Try up to 2 times
+    // STEP 5: Try connection with multiple strategies
+    const int MAX_RETRIES = 3;
     bool connected = false;
     
-    for (int retry = 0; retry < maxRetries && !connected; retry++) {
+    for (int retry = 0; retry < MAX_RETRIES && !connected; retry++) {
         if (retry > 0) {
-            Serial.printf("\nRetry %d/%d: Reconnecting...\n", retry + 1, maxRetries);
+            Serial.printf("\n--- Retry %d/%d ---\n", retry + 1, MAX_RETRIES);
+            
+            // Complete reset before retry
             WiFi.disconnect(true);
+            delay(1000);
+            WiFi.mode(WIFI_OFF);
             delay(500);
-            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-            startAttemptTime = millis();  // Reset timer for retry
+            WiFi.mode(WIFI_STA);
+            delay(500);
+            WiFi.setAutoConnect(false);
+            WiFi.setAutoReconnect(true);
         }
         
-        attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_TIMEOUT_MS) {
+        // Start connection attempt
+        Serial.print("Connecting");
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        
+        // Wait for connection with progress indication
+        unsigned long startTime = millis();
+        int dotCount = 0;
+        
+        while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < WIFI_TIMEOUT_MS) {
             delay(500);
             Serial.print(".");
-            attempts++;
-            if (attempts % 10 == 0) {
-                Serial.printf(" (%d/%d seconds)\n", (millis() - startAttemptTime) / 1000, WIFI_TIMEOUT_MS / 1000);
+            dotCount++;
+            
+            if (dotCount % 10 == 0) {
+                int elapsed = (millis() - startTime) / 1000;
+                int remaining = (WIFI_TIMEOUT_MS - (millis() - startTime)) / 1000;
+                Serial.printf(" (%ds / %ds remaining)", elapsed, remaining);
+                Serial.println();
                 Serial.print("Still connecting");
             }
         }
         Serial.println();
         
+        // Check connection status
         if (WiFi.status() == WL_CONNECTED) {
             connected = true;
-            break;
+            
+            // Wait a bit to ensure connection is stable
+            delay(1000);
+            
+            // Verify connection is still active
+            if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0,0,0,0)) {
+                Serial.println("✅ WiFi connected successfully!");
+                Serial.printf("   IP Address: %s\n", WiFi.localIP().toString().c_str());
+                Serial.printf("   Gateway:    %s\n", WiFi.gatewayIP().toString().c_str());
+                Serial.printf("   Subnet:     %s\n", WiFi.subnetMask().toString().c_str());
+                Serial.printf("   RSSI:       %d dBm\n", WiFi.RSSI());
+                
+                // Additional stability delay
+                delay(1000);
+                return true;
+            } else {
+                Serial.println("⚠️ Connection lost immediately after connect");
+                connected = false;
+            }
         } else {
-            Serial.printf("Connection attempt %d failed, status: %d\n", retry + 1, WiFi.status());
+            Serial.printf("❌ Connection attempt %d failed\n", retry + 1);
+            Serial.printf("   WiFi status: %d\n", WiFi.status());
         }
     }
     
-    if (connected && WiFi.status() == WL_CONNECTED) {
-        Serial.print("✅ WiFi connected! IP: ");
-        Serial.println(WiFi.localIP());
-        Serial.printf("   RSSI: %d dBm\n", WiFi.RSSI());
-        Serial.printf("   Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("   Subnet: %s\n", WiFi.subnetMask().toString().c_str());
-        
-        // Wait a bit more to ensure WiFi is fully stable
-        delay(1000);
-        return true;
-    }
-    
-    // Detailed error diagnostics
-    Serial.println("❌ WiFi connection failed!");
-    Serial.printf("   Status code: %d (WL_DISCONNECTED)\n", WiFi.status());
-    
-    // Print WiFi diagnostics (ESP32-specific)
-    Serial.println("   WiFi Diagnostics:");
+    // All attempts failed
+    Serial.println("❌ WiFi connection FAILED after all attempts!");
+    Serial.println("WiFi Diagnostics:");
     WiFi.printDiag(Serial);
+    Serial.printf("SSID tried: '%s'\n", WIFI_SSID);
+    Serial.printf("Password length: %d\n", strlen(WIFI_PASSWORD));
+    Serial.printf("MAC Address: %s\n", WiFi.macAddress().c_str());
     
-    // Print MAC address for MAC filtering checks
-    Serial.printf("   ESP32 MAC Address: %s\n", WiFi.macAddress().c_str());
-    Serial.printf("   SSID attempted: '%s'\n", WIFI_SSID);
-    Serial.printf("   Password length: %d characters\n", strlen(WIFI_PASSWORD));
-    
-    Serial.println("   Will retry in loop() or start Access Point mode");
     return false;
 }
 
@@ -1769,17 +1792,26 @@ void setupWebServer() {
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
                 Serial.printf("OTA Update Start: %s\n", filename.c_str());
+                otaUpdateInProgress = true;  // Mark OTA as in progress to prevent WiFi reconnect
                 if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
                     Update.printError(Serial);
+                    otaUpdateInProgress = false;  // Reset on error
                 }
             }
             if (!Update.hasError()) {
                 if (Update.write(data, len) != len) {
                     Update.printError(Serial);
+                    otaUpdateInProgress = false;  // Reset on write error
+                }
+            } else {
+                // Update has error - reset flag on final chunk
+                if (final) {
+                    otaUpdateInProgress = false;
                 }
             }
             if (final) {
                 bool success = Update.end(true);
+                otaUpdateInProgress = false;  // OTA complete (success or failure)
                 if (success) {
                     Serial.printf("OTA Update Success: %u bytes\n", index + len);
                     // Send response IMMEDIATELY after successful update, before reboot
@@ -1822,18 +1854,27 @@ void setupWebServer() {
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
                 Serial.printf("LittleFS OTA Start: %s\n", filename.c_str());
+                otaUpdateInProgress = true;  // Mark OTA as in progress to prevent WiFi reconnect
                 // UPDATE_TYPE_FILESYSTEM = U_SPIFFS
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
                     Update.printError(Serial);
+                    otaUpdateInProgress = false;  // Reset on error
                 }
             }
             if (!Update.hasError()) {
                 if (Update.write(data, len) != len) {
                     Update.printError(Serial);
+                    otaUpdateInProgress = false;  // Reset on write error
+                }
+            } else {
+                // Update has error - reset flag on final chunk
+                if (final) {
+                    otaUpdateInProgress = false;
                 }
             }
             if (final) {
                 bool success = Update.end(true);
+                otaUpdateInProgress = false;  // OTA complete (success or failure)
                 if (success) {
                     Serial.printf("LittleFS OTA Success: %u bytes\n", index + len);
                     // Send response IMMEDIATELY after successful update, before reboot
@@ -2051,12 +2092,12 @@ void loop() {
         delay(500);
         
         // CRITICAL: Reset WiFi state before reboot to ensure clean connection on next boot
-        // Disconnect and clear stored credentials so secrets.h is used on next boot
-        WiFi.disconnect(true);  // true = erase stored credentials from NVS
-        WiFi.setAutoConnect(false);  // Disable auto-connect - we want to use secrets.h
-        WiFi.setAutoReconnect(true);  // Enable auto-reconnect for runtime (if connection is lost)
-        delay(100);
-        Serial.println("WiFi state reset for clean connection on next boot");
+        // Complete WiFi reset - setupWiFi() will handle everything fresh
+        WiFi.persistent(false);  // Don't save anything
+        WiFi.disconnect(true);   // Erase all stored credentials
+        WiFi.mode(WIFI_OFF);     // Turn WiFi OFF
+        delay(200);
+        Serial.println("WiFi completely reset for clean boot");
         
         // Flush all serial output
         Serial.flush();
@@ -2113,9 +2154,20 @@ void loop() {
         updateTankLevel();
     }
     
-    if (!state.apModeActive && WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi lost, reconnecting...");
-        setupWiFi();
+    // WiFi reconnect logic - but NOT during OTA update or scheduled reboot
+    if (!state.apModeActive && 
+        !otaUpdateInProgress && 
+        !rebootScheduled && 
+        WiFi.status() != WL_CONNECTED &&
+        (now - lastWiFiReconnectAttempt) >= WIFI_RECONNECT_INTERVAL) {
+        Serial.println("WiFi lost, attempting reconnect...");
+        lastWiFiReconnectAttempt = now;
+        // Don't block - just try once, will retry later if needed
+        WiFi.disconnect();
+        delay(100);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        // Give it a few seconds to connect before next check
+        lastWiFiReconnectAttempt = now - (WIFI_RECONNECT_INTERVAL - 5000);
     }
     
     // Cleanup disconnected WebSocket clients
