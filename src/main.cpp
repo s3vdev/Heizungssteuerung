@@ -1009,6 +1009,13 @@ void saveSettings() {
 
 // ========== WIFI SETUP ==========
 bool setupWiFi() {
+    // Enable auto-reconnect and auto-connect for better stability after reboot
+    WiFi.setAutoReconnect(true);
+    WiFi.setAutoConnect(true);
+    
+    // Disable WiFi power save mode to prevent disconnections
+    WiFi.setSleep(false);
+    
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     
@@ -1025,10 +1032,16 @@ bool setupWiFi() {
         Serial.print("WiFi connected! IP: ");
         Serial.println(WiFi.localIP());
         Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
+        Serial.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+        Serial.printf("Subnet: %s\n", WiFi.subnetMask().toString().c_str());
+        
+        // Wait a bit more to ensure WiFi is fully stable
+        delay(1000);
         return true;
     }
     
     Serial.println("WiFi connection failed!");
+    Serial.println("Will retry in loop() or start Access Point mode");
     return false;
 }
 
@@ -1878,11 +1891,14 @@ void setup() {
     
     if (!wifiConnected) {
         Serial.println("WiFi connection failed, starting Access Point mode...");
+        Serial.println("(You can still access via http://192.168.4.1 if AP mode starts)");
         setupAccessPoint();
     } else {
-        // Wait a bit for WiFi to stabilize after reboot
-        delay(2000);
+        // WiFi is connected, wait a bit more for full stability
+        Serial.println("WiFi connected, waiting for stability...");
+        delay(3000);  // Extended wait for VPN/network stability
         Serial.println("WiFi stable, setting up services...");
+        Serial.printf("Final IP check: %s\n", WiFi.localIP().toString().c_str());
         setupMDNS();
         setupNTP();
         
@@ -1903,6 +1919,21 @@ void setup() {
     }
     
     setupWebServer();
+    
+    // Final check: Ensure WiFi is still connected before declaring setup complete
+    if (wifiConnected) {
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("=== Setup complete ===");
+            Serial.printf("Access via: http://%s/\n", WiFi.localIP().toString().c_str());
+            Serial.printf("Or via mDNS: http://%s.local/\n", HOSTNAME);
+        } else {
+            Serial.println("⚠️ WARNING: WiFi disconnected during setup!");
+            Serial.println("Will retry in loop()...");
+        }
+    } else {
+        Serial.println("=== Setup complete (AP Mode) ===");
+        Serial.println("Access via: http://192.168.4.1/");
+    }
     
     // Fetch weather data once at startup (only if WiFi connected and location is set)
     if (wifiConnected && state.locationName.length() > 0 && state.locationName != "Unbekannter Ort") {
@@ -1933,7 +1964,7 @@ void setup() {
         scheduleControl();  // Will turn on if in schedule time
     }
     
-    Serial.println("=== Setup complete ===\n");
+    Serial.println("\n");
 }
 
 // ========== LOOP ==========
