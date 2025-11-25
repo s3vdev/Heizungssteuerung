@@ -248,10 +248,12 @@ void setPump(bool on, bool manualOverride = false) {
     bool stateChanged = (on != state.pumpOn);
     
     if (stateChanged) {
-        serialLog("[Pump] Setting pump to ");
-        serialLog(on ? "ON" : "OFF");
-        serialLog(" - GPIO22: ");
-        serialLogLn(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+        // Build complete message first, then log as one message
+        String msg = "[Pump] Setting pump to ";
+        msg += (on ? "ON" : "OFF");
+        msg += " - GPIO22: ";
+        msg += (on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+        serialLogLn(msg.c_str());
         Serial.flush();
     }
     
@@ -315,10 +317,12 @@ void setHeater(bool on, bool saveToNVS = true) {
     // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
     // Use normal OUTPUT for LOW (driven to GND)
     
-    serialLog("[Relay] Setting heater to ");
-    serialLog(on ? "ON" : "OFF");
-    serialLog(" - GPIO23: ");
-    serialLogLn(on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+    // Build complete message first, then log as one message
+    String msg = "[Relay] Setting heater to ";
+    msg += (on ? "ON" : "OFF");
+    msg += " - GPIO23: ";
+    msg += (on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+    serialLogLn(msg.c_str());
     Serial.flush();
     
     if (on) {
@@ -357,10 +361,12 @@ void setHeater(bool on, bool saveToNVS = true) {
         prefs.end();
     }
     
-    serialLog("[Relay] Heater ");
-    serialLog(on ? "ON" : "OFF");
-    serialLog(" - GPIO23 actual: ");
-    serialLogLn(actualState == LOW ? "LOW" : "HIGH");
+    // Build complete message first, then log as one message
+    String msg2 = "[Relay] Heater ";
+    msg2 += (on ? "ON" : "OFF");
+    msg2 += " - GPIO23 actual: ";
+    msg2 += (actualState == LOW ? "LOW" : "HIGH");
+    serialLogLn(msg2.c_str());
     Serial.flush();
     
     // Send Telegram notification on state change
@@ -694,13 +700,14 @@ void initSensors() {
     if (deviceCount >= 1) {
         sensors.getAddress(sensor1Address, 0);
         sensor1Found = true;
-        serialLog("[Sensor] Sensor 1 (Vorlauf) address: ");
+        // Build complete address string first, then log as one message
+        String addrStr = "[Sensor] Sensor 1 (Vorlauf) address: ";
         for (uint8_t i = 0; i < 8; i++) {
             char hexStr[3];
             sprintf(hexStr, "%02X", sensor1Address[i]);
-            serialLog(hexStr);
+            addrStr += hexStr;
         }
-        serialLogLn("");
+        serialLogLn(addrStr.c_str());
     } else {
         sensor1Found = false;
     }
@@ -708,13 +715,14 @@ void initSensors() {
     if (deviceCount >= 2) {
         sensors.getAddress(sensor2Address, 1);
         sensor2Found = true;
-        serialLog("[Sensor] Sensor 2 (Rücklauf) address: ");
+        // Build complete address string first, then log as one message
+        String addrStr = "[Sensor] Sensor 2 (Rücklauf) address: ";
         for (uint8_t i = 0; i < 8; i++) {
             char hexStr[3];
             sprintf(hexStr, "%02X", sensor2Address[i]);
-            serialLog(hexStr);
+            addrStr += hexStr;
         }
-        serialLogLn("");
+        serialLogLn(addrStr.c_str());
     } else {
         sensor2Found = false;
         if (deviceCount < 2) {
