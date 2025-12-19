@@ -30,14 +30,14 @@
         │  ┌───────────────┐  │  │                     │  │                     │
         │  │ PIN-Belegung: │  │  │  VCC ←── 5V        │  │  VCC ←── 5V        │
         │  │               │  │  │  GND ←── GND       │  │  GND ←── GND       │
-        │  │ 5V   ←── 5V   │  │  │  IN  ←── GPIO23   │  │  IN  ←── GPIO22   │
+        │  │ 5V   ←── 5V   │  │  │  IN  ←── GPIO21   │  │  IN  ←── GPIO22   │
         │  │ GND  ←── GND  │  │  │                     │  │                     │
         │  │               │  │  │  COM ────────┐     │  │  COM ────────┐     │
         │  │ 3.3V ──→ +    │  │  │  NO  ────────┼─────┼─│  NO  ────────┼─────┼─
         │  │               │  │  │              │     │ │              │     │ │
         │  │ GPIO4 ──→ BUS │  │  └──────────────┼─────┘ └──────────────┼─────┘ │
         │  │               │  │                  │                      │       │
-        │  │ GPIO23 ──→ RLY│  │                  │                      │       │
+        │  │ GPIO21 ──→ RLY│  │                  │                      │       │
         │  │ GPIO22 ──→ RLY│  │                  │                      │       │
         │  └───────────────┘  │            +12V ─┘              Phase ─┘       │
         │                     │           (12V)                 (230V!)        │
@@ -80,7 +80,7 @@
 | **GPIO4** | DS18B20 DATA (beide) | OneWire Bus |
 | **GPIO5** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
 | **GPIO18** | JSN-SR04T ECHO | Ultraschall Echo (optional) |
-| **GPIO23** | Relais #1 IN (Heizung) | Steuerung (Active-Low!) |
+| **GPIO21** | Relais #1 IN (Heizung) | Steuerung (Active-Low!) |
 | **GPIO22** | Relais #2 IN (Pumpe) | Steuerung (Active-Low!) |
 
 ### DS18B20 Sensoren (beide identisch verdrahtet)
@@ -95,13 +95,13 @@
 
 ### Relais-Module (2x 1-Kanal, Active-Low)
 
-#### Relais #1: Heizung (GPIO23) - 12V DC
+#### Relais #1: Heizung (GPIO21) - 12V DC
 
 | Relais Pin | Verbindung | Beschreibung |
 |------------|------------|--------------|
 | **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
 | **GND** | GND | Masse |
-| **IN** | ESP32 GPIO23 | Steuersignal |
+| **IN** | ESP32 GPIO21 | Steuersignal |
 | **COM** | +12V (gelbes Kabel) | Eingang 12V DC |
 | **NO** | zu Heizgerät (+12V) | Ausgang (Normal Open) |
 
@@ -120,8 +120,8 @@
 - **Relais #2 (Pumpe)**: Schaltet 230V AC - **NIEMALS N oder PE durch Relais!**
 
 **Active-Low Logik mit Open-Drain-Mode (beide Relais identisch):**
-- GPIO23/GPIO22 = **LOW** (OUTPUT-Mode, 0V) → Relais **EIN** → Heizung/Pumpe läuft
-- GPIO23/GPIO22 = **HIGH** (OUTPUT_OPEN_DRAIN-Mode, floating) → Relais **AUS** → Heizung/Pumpe aus
+- GPIO21/GPIO22 = **LOW** (OUTPUT-Mode, 0V) → Relais **EIN** → Heizung/Pumpe läuft
+- GPIO21/GPIO22 = **HIGH** (OFF-Modus abhängig von Einstellung) → Relais **AUS** → Heizung/Pumpe aus
 
 **WICHTIG:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig! Daher muss Open-Drain-Mode verwendet werden:
 - HIGH wird als "floating" gesetzt → wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen
@@ -246,7 +246,7 @@
 7. **Relais #1 (Heizung) anschließen:**
    - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
    - GND → Gemeinsame Masse
-   - IN → ESP32 GPIO23
+   - IN → ESP32 GPIO21
 
 8. **Relais #2 (Pumpe) anschließen:**
    - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+

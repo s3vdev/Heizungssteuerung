@@ -1325,6 +1325,52 @@
                 
                 <button class="btn btn-primary" onclick="saveSettings()" style="margin-top: 12px;">Zeitplan speichern</button>
             </div>
+
+            <!-- NEW: Relay Configuration Card (Advanced) -->
+            <div class="card" id="relayConfigCard">
+                <div class="card-header">
+                    <div class="card-title">Relais-Einstellungen (Erweitert)</div>
+                </div>
+
+                <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
+                    Falls ein Relais im AUS-Zustand leicht glimmt oder nicht sauber schaltet, kann es helfen, das OFF-Verhalten umzustellen.
+                    Standard ist <b>Active-Low</b> + <b>Open-Drain OFF</b> (floating).
+                </div>
+
+                <div style="font-weight: 600; margin: 6px 0 10px; color: #2c3e50;">Heizung</div>
+                <div class="toggle-control" style="margin-bottom: 10px;">
+                    <div class="toggle-label">Heizungsrelais Active-Low (LOW = EIN)</div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="heaterRelayActiveLow" onchange="saveRelayConfig()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item" style="margin-bottom: 16px;">
+                    <label class="setting-label">Heizungsrelais OFF-Modus</label>
+                    <select class="setting-input" id="heaterRelayOffMode" onchange="saveRelayConfig()">
+                        <option value="0">OUTPUT HIGH (3.3V)</option>
+                        <option value="1">OPEN-DRAIN HIGH</option>
+                        <option value="2">INPUT (Hi-Z)</option>
+                    </select>
+                </div>
+
+                <div style="font-weight: 600; margin: 6px 0 10px; color: #2c3e50;">Pumpe</div>
+                <div class="toggle-control" style="margin-bottom: 10px;">
+                    <div class="toggle-label">Pumpenrelais Active-Low (LOW = EIN)</div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="pumpRelayActiveLow" onchange="saveRelayConfig()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item" style="margin-bottom: 0;">
+                    <label class="setting-label">Pumpenrelais OFF-Modus</label>
+                    <select class="setting-input" id="pumpRelayOffMode" onchange="saveRelayConfig()">
+                        <option value="0">OUTPUT HIGH (3.3V)</option>
+                        <option value="1">OPEN-DRAIN HIGH</option>
+                        <option value="2">INPUT (Hi-Z)</option>
+                    </select>
+                </div>
+            </div>
             
             <!-- NEW: Location Settings Card -->
             <div class="card">
@@ -1577,6 +1623,11 @@
             tankCapacity: 1000,
             latitude: 50.952149,
             longitude: 7.1229,
+            locationName: null,
+            heaterRelayActiveLow: true,
+            pumpRelayActiveLow: true,
+            heaterRelayOffMode: 0,
+            pumpRelayOffMode: 0,
             weather: null
         };
         
@@ -1637,6 +1688,12 @@
                         precipitation: 4.0
                     }
                 };
+
+                // Demo defaults for relay settings
+                currentState.heaterRelayActiveLow = true;
+                currentState.pumpRelayActiveLow = true;
+                currentState.heaterRelayOffMode = 0;
+                currentState.pumpRelayOffMode = 0;
                 
                 displayWeather();
                 startSimulation();
@@ -1848,6 +1905,19 @@
                 if (!response.ok) throw new Error('API failed');
                 
                 const data = await response.json();
+
+                // Ensure schedules array always exists with MAX_SCHEDULES entries
+                const schedulesFromApi = Array.isArray(data.schedules) ? data.schedules : [];
+                const safeSchedules = [];
+                for (let i = 0; i < MAX_SCHEDULES; i++) {
+                    const s = schedulesFromApi[i] || (currentState.schedules && currentState.schedules[i]) || {};
+                    safeSchedules.push({
+                        enabled: !!s.enabled,
+                        start: (typeof s.start === 'string' && s.start) ? s.start : '00:00',
+                        end: (typeof s.end === 'string' && s.end) ? s.end : '00:00'
+                    });
+                }
+
                 currentState = {
                     version: data.version || 'v0.0.0',
                     tempVorlauf: data.tempVorlauf,
@@ -1862,7 +1932,7 @@
                     uptime: data.uptime,
                     currentTime: data.currentTime,
                     ntpSynced: data.ntpSynced,
-                    schedules: data.schedules || currentState.schedules,
+                    schedules: safeSchedules,
                     tempDiff: data.tempDiff,
                     efficiency: data.efficiency || 0,
                     switchCount: data.switchCount || 0,
@@ -1879,7 +1949,11 @@
                     tankCapacity: data.tankCapacity || 1000,
                     latitude: data.latitude || 50.952149,
                     longitude: data.longitude || 7.1229,
-                    locationName: data.locationName || null
+                    locationName: data.locationName || null,
+                    heaterRelayActiveLow: (data.heaterRelayActiveLow !== undefined) ? data.heaterRelayActiveLow : true,
+                    pumpRelayActiveLow: (data.pumpRelayActiveLow !== undefined) ? data.pumpRelayActiveLow : true,
+                    heaterRelayOffMode: (data.heaterRelayOffMode !== undefined) ? data.heaterRelayOffMode : 0,
+                    pumpRelayOffMode: (data.pumpRelayOffMode !== undefined) ? data.pumpRelayOffMode : 0
                 };
                 
                 // Update location name from status if available
@@ -2454,6 +2528,18 @@
             document.getElementById('frostEnabled').checked = currentState.frostEnabled;
             document.getElementById('frostTemp').value = currentState.frostTemp;
             document.getElementById('frostTempSetting').style.display = currentState.frostEnabled ? 'block' : 'none';
+
+            // Relay config (advanced)
+            const hAct = document.getElementById('heaterRelayActiveLow');
+            const pAct = document.getElementById('pumpRelayActiveLow');
+            const hOff = document.getElementById('heaterRelayOffMode');
+            const pOff = document.getElementById('pumpRelayOffMode');
+            if (hAct && pAct && hOff && pOff) {
+                hAct.checked = !!currentState.heaterRelayActiveLow;
+                pAct.checked = !!currentState.pumpRelayActiveLow;
+                hOff.value = String(currentState.heaterRelayOffMode ?? 0);
+                pOff.value = String(currentState.pumpRelayOffMode ?? 0);
+            }
             
             // Tank level
             document.getElementById('tankHeight').value = currentState.tankHeight;
@@ -2550,7 +2636,9 @@
             container.innerHTML = '';
             
             for (let i = 0; i < MAX_SCHEDULES; i++) {
-                const s = currentState.schedules[i];
+                const s = (currentState.schedules && currentState.schedules[i]) ? currentState.schedules[i] : { enabled: false, start: '00:00', end: '00:00' };
+                const startVal = (typeof s.start === 'string' && s.start) ? s.start : '00:00';
+                const endVal = (typeof s.end === 'string' && s.end) ? s.end : '00:00';
                 const item = document.createElement('div');
                 item.className = 'schedule-item';
                 item.innerHTML = `
@@ -2562,8 +2650,8 @@
                         </div>
                     </div>
                     <div class="schedule-times">
-                        <input type="time" class="time-input" id="sched${i}Start" value="${s.start}">
-                        <input type="time" class="time-input" id="sched${i}End" value="${s.end}">
+                        <input type="time" class="time-input" id="sched${i}Start" value="${startVal}">
+                        <input type="time" class="time-input" id="sched${i}End" value="${endVal}">
                     </div>
                 `;
                 container.appendChild(item);
@@ -2722,6 +2810,50 @@
                 currentState.pumpManualMode = currentState.pump;
                 updateUI();
                 appendSerialLog(`Manual toggle: Pump ${currentState.pump ? 'ON' : 'OFF'}\n`, '#3498db');
+            }
+        }
+
+        async function saveRelayConfig() {
+            // Read UI values
+            const heaterRelayActiveLow = document.getElementById('heaterRelayActiveLow').checked;
+            const pumpRelayActiveLow = document.getElementById('pumpRelayActiveLow').checked;
+            const heaterRelayOffMode = parseInt(document.getElementById('heaterRelayOffMode').value, 10);
+            const pumpRelayOffMode = parseInt(document.getElementById('pumpRelayOffMode').value, 10);
+
+            // Update local state immediately
+            currentState.heaterRelayActiveLow = heaterRelayActiveLow;
+            currentState.pumpRelayActiveLow = pumpRelayActiveLow;
+            currentState.heaterRelayOffMode = heaterRelayOffMode;
+            currentState.pumpRelayOffMode = pumpRelayOffMode;
+            updateUI();
+
+            if (isLocalMode) {
+                showToast('⚠️ Demo-Modus: Relais-Einstellungen werden nicht gespeichert.', 'warning', 3000);
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
+                    body: JSON.stringify({
+                        heaterRelayActiveLow,
+                        pumpRelayActiveLow,
+                        heaterRelayOffMode,
+                        pumpRelayOffMode
+                    })
+                });
+                if (!response.ok) {
+                    const txt = await response.text();
+                    console.error('Relay config save failed:', response.status, txt);
+                    showToast('Fehler beim Speichern der Relais-Einstellungen', 'error');
+                    return;
+                }
+                showToast('Relais-Einstellungen gespeichert', 'success', 2000);
+                await updateStatus();
+            } catch (e) {
+                console.error('Relay config save error:', e);
+                showToast('Fehler beim Speichern der Relais-Einstellungen', 'error');
             }
         }
         

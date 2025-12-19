@@ -94,7 +94,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | **ESP32 DevKit V1 (WROOM-32) USB-C (30 PIN)** | 1x | Mikrocontroller mit WiFi & Bluetooth |
 | **DS18B20 Temperatursensor** (wasserdicht) | 2x | Vorlauf- & Rücklauftemperatur |
 | **JSN-SR04T Ultraschall-Sensor** (wasserdicht) | 1x | Tankfüllstand-Messung (optional) |
-| **1-Kanal Relais-Modul** (Active-Low) | 2x | Heizungsschaltung (GPIO23) & Umwälzpumpe (GPIO22), je bis 10A |
+| **1-Kanal Relais-Modul** (Active-Low) | 2x | Heizungsschaltung (GPIO21) & Umwälzpumpe (GPIO22), je bis 10A |
 | **LM2596S Spannungsregler** (DC-DC Step-Down) | 1x | Optional - nur bei externer 12V/24V Versorgung nötig |
 | **USB-Netzteil** (5V, 1-2A) | 1x | Alternative zu LM2596S - alle Komponenten können direkt am ESP32 betrieben werden |
 | **4.7 kΩ Widerstand** | 1x | Pull-Up für OneWire-Bus |
@@ -110,7 +110,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 | JSN-SR04T ECHO | GPIO18 | Ultraschall Echo |
 | JSN-SR04T VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | JSN-SR04T GND | GND | Gemeinsame Masse |
-| Relais #1 IN (Heizung) | GPIO23 | Active-Low (LOW=EIN, HIGH=AUS) |
+| Relais #1 IN (Heizung) | GPIO21 | Active-Low (LOW=EIN, HIGH=AUS) |
 | Relais #1 VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | Relais #1 GND | GND | Gemeinsame Masse |
 | Relais #2 IN (Pumpe) | GPIO22 | Active-Low (LOW=EIN, HIGH=AUS) |
@@ -138,15 +138,13 @@ Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durc
 - **Wasserdicht**: IP67 (Sensor-Kopf kann eingetaucht werden)
 
 ### Schaltlogik
-- **Relais Active-Low mit Open-Drain-Mode**: 
-  - **Heizungsrelais (GPIO23)**:
-    - `GPIO23 = LOW` (OUTPUT-Mode) → Relais EIN → Heizung läuft
-    - `GPIO23 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Heizung ruht
-  - **Pumpenrelais (GPIO22)**:
-    - `GPIO22 = LOW` (OUTPUT-Mode) → Relais EIN → Umwälzpumpe läuft
-    - `GPIO22 = HIGH` (OUTPUT_OPEN_DRAIN-Mode) → Relais AUS → Pumpe ruht
-  
-  **Hinweis:** Das HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig. Daher wird Open-Drain-Mode für HIGH verwendet (Pin ist "floating" und wird vom internen Pull-Up des Relais-Moduls auf HIGH gezogen).
+- **Relais-Logik (konfigurierbar)**:
+  - Standard/Empfehlung für viele Module: **Active-Low** (`LOW = EIN`, `HIGH = AUS`)
+  - **OFF-Verhalten** (wichtig bei manchen Relais-Modulen):
+    - **Open-Drain OFF (floating)**: Pin wird auf `OUTPUT_OPEN_DRAIN + HIGH` gesetzt → Eingang wird über Pull-Up des Moduls auf HIGH gezogen (hilft bei Modulen, die 3.3V-HIGH nicht sauber erkennen).
+    - **Push-Pull OFF (aktiv HIGH)**: Pin wird auf `OUTPUT + HIGH` gesetzt → sauberer HIGH-Pegel (kann LED-Glimmen im AUS-Zustand verhindern).
+
+  **Hinweis:** Wenn dein Relais im AUS-Zustand **leicht grün glimmt**, stelle das OFF-Verhalten auf **Push-Pull OFF** um. Das geht im Dashboard unter **„Relais-Einstellungen (Erweitert)”** (oder per `/api/settings`).
 
 ### Pumpensteuerung
 - **Sicherheitsregel**: Heizung EIN → Pumpe MUSS EIN sein (automatisch erzwungen)
@@ -527,7 +525,7 @@ Der ESP32 sendet automatisch Telegram-Nachrichten bei:
 - **Alternative**: Direkt über IP-Adresse zugreifen (siehe Serial Monitor)
 
 ### Problem: Relais schaltet nicht
-- **Check**: Pinbelegung GPIO23 prüfen
+- **Check**: Pinbelegung GPIO21 prüfen
 - **Check**: Relais-Versorgung (5V, GND)
 - **Test**: Logik ist Active-Low (LOW = EIN)
 

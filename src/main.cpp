@@ -14,9 +14,11 @@
 #include "secrets.h"
 
 // ========== PIN CONFIGURATION ==========
-#define HEATING_RELAY_PIN 23  // GPIO23 for heating relay control (Active-Low)
+#define HEATING_RELAY_PIN 21  // GPIO21 for heating relay control (Active-Low) (GPIO23 seems unreliable on some boards)
 #define PUMP_RELAY_PIN 22     // GPIO22 for pump relay control (Active-Low)
-#define RELAY_PIN 23          // Legacy alias for backward compatibility
+#define DEFAULT_HEATING_RELAY_PIN HEATING_RELAY_PIN
+#define DEFAULT_PUMP_RELAY_PIN PUMP_RELAY_PIN
+#define RELAY_PIN HEATING_RELAY_PIN  // Legacy alias for backward compatibility
 #define ONE_WIRE_BUS 4        // GPIO4 for DS18B20 sensors (both on same bus)
 #define TRIG_PIN 5            // GPIO5 for JSN-SR04T TRIG
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
@@ -98,7 +100,84 @@ struct SystemState {
     float latitude = 50.952149;         // Default: Cologne
     float longitude = 7.1229;
     String locationName = "";           // Saved location name (city)
+
+    // Relay configuration (per output)
+    // - activeLow: true => ON=LOW, OFF=HIGH
+    // - openDrainOff: true => when OFF requires HIGH, use OUTPUT_OPEN_DRAIN + HIGH (floating)
+    bool heaterRelayActiveLow = true;
+    bool pumpRelayActiveLow = true;
+    // OFF mode when the relay should be electrically HIGH:
+    // 0 = OUTPUT HIGH (push-pull 3.3V)
+    // 1 = OPEN-DRAIN HIGH (floating output driver)
+    // 2 = INPUT (hi-Z)
+    uint8_t heaterRelayOffMode = 0;
+    uint8_t pumpRelayOffMode = 0;
+
+    // Relay GPIO pins (configurable; useful if a pin is damaged or miswired)
+    uint8_t heaterRelayPin = DEFAULT_HEATING_RELAY_PIN;
+    uint8_t pumpRelayPin = DEFAULT_PUMP_RELAY_PIN;
 } state;
+
+// ========== RELAY DRIVER HELPERS ==========
+static void applyRelayOutput(uint8_t pin, bool on, bool activeLow, uint8_t offMode, const char* nameForLog) {
+    // Determine the electrical level we want on the GPIO pin
+    // activeLow: ON => LOW, OFF => HIGH
+    bool wantHigh = activeLow ? !on : on;
+
+    // LOW is always actively driven (push-pull), because open-drain LOW is equivalent for our use case.
+    if (!wantHigh) {
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, LOW);
+        return;
+    }
+
+    // wantHigh == true
+    if (!on) {
+        // OFF state: choose how HIGH is represented electrically
+        switch (offMode) {
+            case 2:
+                // INPUT (hi-Z)
+                pinMode(pin, INPUT);
+                break;
+            case 1:
+                // OPEN-DRAIN HIGH
+                pinMode(pin, OUTPUT_OPEN_DRAIN);
+                digitalWrite(pin, HIGH);
+                break;
+            case 0:
+            default:
+                // OUTPUT HIGH (push-pull)
+                pinMode(pin, OUTPUT);
+                digitalWrite(pin, HIGH);
+                break;
+        }
+    } else {
+        // ON state for active-high relays (wantHigh && on): drive HIGH
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, HIGH);
+    }
+
+    (void)nameForLog; // reserved for future detailed logging
+}
+
+static bool isReservedPinForThisProject(int pin) {
+    // Avoid pins used by sensors in this project
+    if (pin == ONE_WIRE_BUS || pin == TRIG_PIN || pin == ECHO_PIN) return true;
+    // Avoid flash pins (GPIO6-11)
+    if (pin >= 6 && pin <= 11) return true;
+    // Avoid input-only pins (GPIO34-39)
+    if (pin >= 34 && pin <= 39) return true;
+    return false;
+}
+
+static bool isAllowedRelayPin(int pin) {
+    // Conservative set of output-capable pins that are typically safe on ESP32 DevKit boards
+    const int allowed[] = {12, 13, 14, 15, 16, 17, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+    for (size_t i = 0; i < sizeof(allowed) / sizeof(allowed[0]); i++) {
+        if (pin == allowed[i] && !isReservedPinForThisProject(pin)) return true;
+    }
+    return false;
+}
 
 // ========== WEATHER CACHE ==========
 struct WeatherData {
@@ -251,29 +330,25 @@ void setPump(bool on, bool manualOverride = false) {
         // Build complete message first, then log as one message
         String msg = "[Pump] Setting pump to ";
         msg += (on ? "ON" : "OFF");
-        msg += " - GPIO22: ";
+        msg += " - GPIO";
+        msg += String(state.pumpRelayPin);
+        msg += ": ";
         msg += (on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
         serialLogLn(msg.c_str());
         Serial.flush();
     }
     
     state.pumpOn = on;
-    
-    // Active-Low: LOW = ON, HIGH = OFF (same as heating relay)
-    if (on) {
-        // Relay ON: Set to LOW using normal OUTPUT mode
-        pinMode(PUMP_RELAY_PIN, OUTPUT);
-        digitalWrite(PUMP_RELAY_PIN, LOW);
-    } else {
-        // Relay OFF: Set to HIGH using OPEN-DRAIN mode (floating, pulled up by relay module)
-        pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
-        digitalWrite(PUMP_RELAY_PIN, HIGH);
-    }
+
+    // Apply relay output based on configured polarity/off-mode
+    applyRelayOutput(state.pumpRelayPin, on, state.pumpRelayActiveLow, state.pumpRelayOffMode, "Pump");
     
     // Verify pin state was set correctly (only log if verification fails)
     delay(50);
-    int actualState = digitalRead(PUMP_RELAY_PIN);
-    bool stateCorrect = (on && actualState == LOW) || (!on && actualState != LOW);
+    int actualState = digitalRead(state.pumpRelayPin);
+    // Read-back check is best-effort (open-drain HIGH may read as HIGH or floating)
+    bool expectedLow = state.pumpRelayActiveLow ? on : !on; // activeLow: ON->LOW, activeHigh: OFF->LOW
+    bool stateCorrect = expectedLow ? (actualState == LOW) : (actualState != LOW);
     
     if (!stateCorrect && stateChanged) {
         serialLog("[Pump] ⚠️ GPIO22 read back mismatch! Expected: ");
@@ -285,7 +360,9 @@ void setPump(bool on, bool manualOverride = false) {
     if (stateChanged) {
         serialLog("[Pump] Pump ");
         serialLog(on ? "ON" : "OFF");
-        serialLog(" - GPIO22 actual: ");
+        serialLog(" - GPIO");
+        serialLog(String(state.pumpRelayPin).c_str());
+        serialLog(" actual: ");
         serialLogLn(actualState == LOW ? "LOW" : "HIGH");
         Serial.flush();
     }
@@ -312,40 +389,46 @@ void setHeater(bool on, bool saveToNVS = true) {
         setPump(true, false);
     }
     
-    // Active-Low: LOW = ON, HIGH = OFF
-    // IMPORTANT: HW-307 Relais-Modul erkennt 3.3V HIGH nicht zuverlässig!
-    // Use Open-Drain for HIGH (floating, pulled up by relay module's internal pull-up)
-    // Use normal OUTPUT for LOW (driven to GND)
-    
     // Build complete message first, then log as one message
     String msg = "[Relay] Setting heater to ";
     msg += (on ? "ON" : "OFF");
-    msg += " - GPIO23: ";
-    msg += (on ? "LOW (OUTPUT)" : "HIGH (OPEN-DRAIN)");
+    msg += " - GPIO";
+    msg += String(state.heaterRelayPin);
+    msg += ": ";
+    // Log based on expected electrical behavior
+    if (state.heaterRelayActiveLow) {
+        if (on) {
+            msg += "LOW (OUTPUT)";
+        } else {
+            msg += "HIGH (OFF-MODE)";
+        }
+    } else {
+        msg += (on ? "HIGH (OUTPUT)" : "LOW (OUTPUT)");
+    }
     serialLogLn(msg.c_str());
     Serial.flush();
     
     if (on) {
-        // Relay ON: Set to LOW using normal OUTPUT mode
-        pinMode(HEATING_RELAY_PIN, OUTPUT);
-        digitalWrite(HEATING_RELAY_PIN, LOW);
+        // Apply configured relay output
+        applyRelayOutput(state.heaterRelayPin, true, state.heaterRelayActiveLow, state.heaterRelayOffMode, "Heater");
         // Ensure pump is ON when heating is ON
         if (!state.pumpOn) {
             setPump(true, false);
         }
         lastHeatingOffTime = 0;  // Reset cooldown timer
     } else {
-        // Relay OFF: Set to HIGH using OPEN-DRAIN mode (floating, pulled up by relay module)
-        pinMode(HEATING_RELAY_PIN, OUTPUT_OPEN_DRAIN);
-        digitalWrite(HEATING_RELAY_PIN, HIGH);
+        // Apply configured relay output
+        applyRelayOutput(state.heaterRelayPin, false, state.heaterRelayActiveLow, state.heaterRelayOffMode, "Heater");
         // Start cooldown timer for pump (pump will turn OFF after cooldown unless manual override)
         lastHeatingOffTime = millis();
     }
     
     // Verify pin state was set correctly (only log if verification fails)
     delay(50); // Longer delay for relay to respond
-    int actualState = digitalRead(HEATING_RELAY_PIN);
-    bool stateCorrect = (on && actualState == LOW) || (!on && actualState != LOW);
+    int actualState = digitalRead(state.heaterRelayPin);
+    // Read-back check is best-effort (open-drain HIGH may read as HIGH or floating)
+    bool expectedLow = state.heaterRelayActiveLow ? on : !on; // activeLow: ON->LOW, activeHigh: OFF->LOW
+    bool stateCorrect = expectedLow ? (actualState == LOW) : (actualState != LOW);
     
     if (!stateCorrect) {
         serialLog("[Relay] ⚠️ GPIO23 read back mismatch! Expected: ");
@@ -364,7 +447,9 @@ void setHeater(bool on, bool saveToNVS = true) {
     // Build complete message first, then log as one message
     String msg2 = "[Relay] Heater ";
     msg2 += (on ? "ON" : "OFF");
-    msg2 += " - GPIO23 actual: ";
+    msg2 += " - GPIO";
+    msg2 += String(state.heaterRelayPin);
+    msg2 += " actual: ";
     msg2 += (actualState == LOW ? "LOW" : "HIGH");
     serialLogLn(msg2.c_str());
     Serial.flush();
@@ -974,6 +1059,36 @@ void loadSettings() {
     state.latitude = prefs.getFloat("latitude", 50.952149);
     state.longitude = prefs.getFloat("longitude", 7.1229);
     state.locationName = prefs.getString("locationName", "");
+
+    // Load relay configuration (per output)
+    // Only fall back to defaults if the key does not exist (so we can change defaults safely in new versions).
+    state.heaterRelayActiveLow = prefs.isKey("hActLow") ? prefs.getBool("hActLow", true) : true;
+    state.pumpRelayActiveLow = prefs.isKey("pActLow") ? prefs.getBool("pActLow", true) : true;
+
+    // OFF mode migration:
+    // - New keys: hOffMode/pOffMode (0..2)
+    // - Old keys: hODOff/pODOff (bool) where true means "floating"; map to INPUT (2), false to OUTPUT HIGH (0)
+    if (prefs.isKey("hOffMode")) {
+        state.heaterRelayOffMode = (uint8_t)prefs.getUChar("hOffMode", 0);
+    } else if (prefs.isKey("hODOff")) {
+        state.heaterRelayOffMode = prefs.getBool("hODOff", false) ? 2 : 0;
+    } else {
+        state.heaterRelayOffMode = 0;
+    }
+
+    if (prefs.isKey("pOffMode")) {
+        state.pumpRelayOffMode = (uint8_t)prefs.getUChar("pOffMode", 0);
+    } else if (prefs.isKey("pODOff")) {
+        state.pumpRelayOffMode = prefs.getBool("pODOff", false) ? 2 : 0;
+    } else {
+        state.pumpRelayOffMode = 0;
+    }
+
+    // Load relay pins (fallback to defaults if key missing/invalid)
+    int hPin = prefs.isKey("hPin") ? (int)prefs.getUChar("hPin", DEFAULT_HEATING_RELAY_PIN) : DEFAULT_HEATING_RELAY_PIN;
+    int pPin = prefs.isKey("pPin") ? (int)prefs.getUChar("pPin", DEFAULT_PUMP_RELAY_PIN) : DEFAULT_PUMP_RELAY_PIN;
+    if (isAllowedRelayPin(hPin)) state.heaterRelayPin = (uint8_t)hPin;
+    if (isAllowedRelayPin(pPin)) state.pumpRelayPin = (uint8_t)pPin;
     
     // Load schedules
     for (int i = 0; i < MAX_SCHEDULES; i++) {
@@ -1000,11 +1115,43 @@ void loadSettings() {
                  state.frostProtectionTemp);
     serialLogF("Schedules loaded: %d\n", MAX_SCHEDULES);
     
-    // Safety check: If heating was ON, ensure pump is also ON
+    // Safety note:
+    // Do NOT silently flip pumpOn here. We will enforce "heating ON => pump ON" during setup()
+    // and actually apply the GPIO state there. This avoids state/relay mismatches after reboot.
     if (state.heatingOn && !state.pumpOn) {
-        serialLogLn("⚠️ SAFETY: Heating was ON but pump OFF - correcting pump state");
-        state.pumpOn = true;
+        serialLogLn("⚠️ SAFETY: Heating was ON but pump OFF in NVS (will force pump ON during setup)");
     }
+}
+
+// Load relay configuration early in setup, before configuring GPIO directions.
+// This reduces the time the relay input might be left in a wrong state after a reset.
+void loadRelayConfigEarly() {
+    prefs.begin("heater", true);
+    state.heaterRelayActiveLow = prefs.isKey("hActLow") ? prefs.getBool("hActLow", true) : true;
+    state.pumpRelayActiveLow = prefs.isKey("pActLow") ? prefs.getBool("pActLow", true) : true;
+
+    if (prefs.isKey("hOffMode")) {
+        state.heaterRelayOffMode = (uint8_t)prefs.getUChar("hOffMode", 0);
+    } else if (prefs.isKey("hODOff")) {
+        state.heaterRelayOffMode = prefs.getBool("hODOff", false) ? 2 : 0;
+    } else {
+        state.heaterRelayOffMode = 0;
+    }
+
+    if (prefs.isKey("pOffMode")) {
+        state.pumpRelayOffMode = (uint8_t)prefs.getUChar("pOffMode", 0);
+    } else if (prefs.isKey("pODOff")) {
+        state.pumpRelayOffMode = prefs.getBool("pODOff", false) ? 2 : 0;
+    } else {
+        state.pumpRelayOffMode = 0;
+    }
+
+    // Relay pins early (so setup() can initialize correct GPIOs)
+    int hPin = prefs.isKey("hPin") ? (int)prefs.getUChar("hPin", DEFAULT_HEATING_RELAY_PIN) : DEFAULT_HEATING_RELAY_PIN;
+    int pPin = prefs.isKey("pPin") ? (int)prefs.getUChar("pPin", DEFAULT_PUMP_RELAY_PIN) : DEFAULT_PUMP_RELAY_PIN;
+    if (isAllowedRelayPin(hPin)) state.heaterRelayPin = (uint8_t)hPin;
+    if (isAllowedRelayPin(pPin)) state.pumpRelayPin = (uint8_t)pPin;
+    prefs.end();
 }
 
 // ========== SAVE SETTINGS TO NVS ==========
@@ -1025,6 +1172,14 @@ void saveSettings() {
     prefs.putFloat("latitude", state.latitude);
     prefs.putFloat("longitude", state.longitude);
     prefs.putString("locationName", state.locationName);
+
+    // Save relay configuration (per output)
+    prefs.putBool("hActLow", state.heaterRelayActiveLow);
+    prefs.putBool("pActLow", state.pumpRelayActiveLow);
+    prefs.putUChar("hOffMode", state.heaterRelayOffMode);
+    prefs.putUChar("pOffMode", state.pumpRelayOffMode);
+    prefs.putUChar("hPin", state.heaterRelayPin);
+    prefs.putUChar("pPin", state.pumpRelayPin);
     
     // Save heating and pump state for all modes (needed to restore after reboot)
     prefs.putBool("heatingOn", state.heatingOn);
@@ -1200,7 +1355,9 @@ void setupWebServer() {
     
     // API: Get current status
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<768> doc;
+        // NOTE: This payload includes nested arrays/objects (schedules) and optional data.
+        // Increase capacity to avoid truncated/missing fields which can break the frontend.
+        StaticJsonDocument<2048> doc;
         
         // Temperatures
         if (isnan(state.tempVorlauf)) {
@@ -1222,6 +1379,10 @@ void setupWebServer() {
         doc["tempOn"] = state.tempOn;
         doc["tempOff"] = state.tempOff;
         doc["relayActiveLow"] = true;
+        doc["heaterRelayActiveLow"] = state.heaterRelayActiveLow;
+        doc["pumpRelayActiveLow"] = state.pumpRelayActiveLow;
+        doc["heaterRelayOffMode"] = state.heaterRelayOffMode;
+        doc["pumpRelayOffMode"] = state.pumpRelayOffMode;
         doc["rssi"] = WiFi.RSSI();
         doc["apMode"] = state.apModeActive;
         doc["uptime"] = state.uptime;
@@ -1341,16 +1502,16 @@ void setupWebServer() {
         serialLogLn(state.heatingOn ? "OFF" : "ON");
         
         // Read current pin state BEFORE toggle
-        int pinBefore = digitalRead(HEATING_RELAY_PIN);
-        serialLogF("[API] GPIO23 BEFORE toggle: %s\n", pinBefore == LOW ? "LOW" : "HIGH");
+        int pinBefore = digitalRead(state.heaterRelayPin);
+        serialLogF("[API] GPIO%d BEFORE toggle: %s\n", (int)state.heaterRelayPin, pinBefore == LOW ? "LOW" : "HIGH");
         Serial.flush();
         
         setHeater(!state.heatingOn);
         
         // Read pin state AFTER toggle
         delay(100);
-        int pinAfter = digitalRead(HEATING_RELAY_PIN);
-        serialLogF("[API] GPIO23 AFTER toggle: %s\n", pinAfter == LOW ? "LOW" : "HIGH");
+        int pinAfter = digitalRead(state.heaterRelayPin);
+        serialLogF("[API] GPIO%d AFTER toggle: %s\n", (int)state.heaterRelayPin, pinAfter == LOW ? "LOW" : "HIGH");
         Serial.flush();
         lastToggleTime = millis();
         
@@ -1460,6 +1621,55 @@ void setupWebServer() {
                     }
                 }
             }
+
+            // Relay configuration (validate types strictly)
+            if (doc.containsKey("heaterRelayActiveLow") && doc["heaterRelayActiveLow"].is<bool>()) {
+                bool v = doc["heaterRelayActiveLow"].as<bool>();
+                if (v != state.heaterRelayActiveLow) {
+                    state.heaterRelayActiveLow = v;
+                    changed = true;
+                }
+            }
+            if (doc.containsKey("pumpRelayActiveLow") && doc["pumpRelayActiveLow"].is<bool>()) {
+                bool v = doc["pumpRelayActiveLow"].as<bool>();
+                if (v != state.pumpRelayActiveLow) {
+                    state.pumpRelayActiveLow = v;
+                    changed = true;
+                }
+            }
+            // New OFF mode (0..2)
+            if (doc.containsKey("heaterRelayOffMode") && doc["heaterRelayOffMode"].is<int>()) {
+                int v = doc["heaterRelayOffMode"].as<int>();
+                if (v >= 0 && v <= 2 && (uint8_t)v != state.heaterRelayOffMode) {
+                    state.heaterRelayOffMode = (uint8_t)v;
+                    changed = true;
+                }
+            }
+            if (doc.containsKey("pumpRelayOffMode") && doc["pumpRelayOffMode"].is<int>()) {
+                int v = doc["pumpRelayOffMode"].as<int>();
+                if (v >= 0 && v <= 2 && (uint8_t)v != state.pumpRelayOffMode) {
+                    state.pumpRelayOffMode = (uint8_t)v;
+                    changed = true;
+                }
+            }
+
+            // Backward compatible booleans (map: true => INPUT(2), false => OUTPUT_HIGH(0))
+            if (doc.containsKey("heaterRelayOpenDrainOff") && doc["heaterRelayOpenDrainOff"].is<bool>()) {
+                bool v = doc["heaterRelayOpenDrainOff"].as<bool>();
+                uint8_t mapped = v ? 2 : 0;
+                if (mapped != state.heaterRelayOffMode) {
+                    state.heaterRelayOffMode = mapped;
+                    changed = true;
+                }
+            }
+            if (doc.containsKey("pumpRelayOpenDrainOff") && doc["pumpRelayOpenDrainOff"].is<bool>()) {
+                bool v = doc["pumpRelayOpenDrainOff"].as<bool>();
+                uint8_t mapped = v ? 2 : 0;
+                if (mapped != state.pumpRelayOffMode) {
+                    state.pumpRelayOffMode = mapped;
+                    changed = true;
+                }
+            }
             
             // Update pump manual mode (only in manual mode)
             if (doc.containsKey("pumpManualMode") && state.mode == "manual") {
@@ -1548,6 +1758,10 @@ void setupWebServer() {
             }
             
             if (changed) {
+                // Apply relay configuration immediately to current outputs
+                applyRelayOutput(state.heaterRelayPin, state.heatingOn, state.heaterRelayActiveLow, state.heaterRelayOffMode, "Heater");
+                applyRelayOutput(state.pumpRelayPin, state.pumpOn, state.pumpRelayActiveLow, state.pumpRelayOffMode, "Pump");
+
                 saveSettings();
                 
                 if (state.mode == "auto") {
@@ -1937,16 +2151,15 @@ void setup() {
     serialLogLn("\n\n=== ESP32 Heater Control v2.2.0 ===");
     
     bootTime = millis();
-    
-    // Initialize both relays (heating and pump) to OFF state
-    // Use Open-Drain mode: HIGH = floating (Relay OFF via internal pull-up), LOW = driven (Relay ON)
-    pinMode(HEATING_RELAY_PIN, OUTPUT_OPEN_DRAIN);
-    digitalWrite(HEATING_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
-    serialLogLn("[Setup] GPIO23 (Heating) initialized to OPEN-DRAIN HIGH (Relay OFF)");
-    
-    pinMode(PUMP_RELAY_PIN, OUTPUT_OPEN_DRAIN);
-    digitalWrite(PUMP_RELAY_PIN, HIGH);  // HIGH = floating = Relay OFF (via internal pull-up in relay module)
-    serialLogLn("[Setup] GPIO22 (Pump) initialized to OPEN-DRAIN HIGH (Relay OFF)");
+
+    // Load relay configuration early (before setting GPIO directions)
+    loadRelayConfigEarly();
+
+    // Initialize both relays (heating and pump) to OFF state using configured polarity/off-mode
+    applyRelayOutput(state.heaterRelayPin, false, state.heaterRelayActiveLow, state.heaterRelayOffMode, "Heater");
+    serialLogLn("[Setup] Heating relay initialized to OFF");
+    applyRelayOutput(state.pumpRelayPin, false, state.pumpRelayActiveLow, state.pumpRelayOffMode, "Pump");
+    serialLogLn("[Setup] Pump relay initialized to OFF");
     // Initialize ultrasonic sensor pins
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
@@ -1968,24 +2181,19 @@ void setup() {
     
     // Restore heater and pump state based on mode
     if (state.mode == "manual") {
-        // Manual mode: restore saved state
-        // Restore pump first (if manual override is active)
-        if (state.pumpManualMode) {
-            setPump(state.pumpOn, true);
-        }
-        // Then restore heating (which will ensure pump is ON if heating is ON)
+        // Manual mode: restore saved state, but ALWAYS enforce safety rule:
+        // Heating ON => Pump ON (and apply GPIO state).
+        bool desiredPump = state.pumpOn;
+        if (state.heatingOn) desiredPump = true;
+        setPump(desiredPump, state.pumpManualMode);
         setHeater(state.heatingOn, false);
     } else {
         // Auto/schedule modes: restore saved state so heater continues running after reboot
         // The control functions will adjust if needed based on current conditions
         // Restore pump state (should follow heating in auto/schedule modes)
-        if (state.heatingOn) {
-            // If heating was ON, ensure pump is also ON
-            setPump(true, false);
-        } else {
-            // If heating was OFF, restore pump state (might be in cooldown)
-            setPump(state.pumpOn, false);
-        }
+        bool desiredPump = state.pumpOn;
+        if (state.heatingOn) desiredPump = true;
+        setPump(desiredPump, false);
         setHeater(state.heatingOn, false);
     }
     

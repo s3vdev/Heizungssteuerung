@@ -176,13 +176,13 @@ Bei 1 Sensor: Kein Problem, wird für beide Werte genutzt!
 
 **2. Steuersignal prüfen**
 ```
-✓ IN-Pin mit GPIO23 verbunden?
+✓ IN-Pin mit GPIO21 verbunden?
 ✓ Im Serial Monitor: "Heater ON (Relay: LOW)" ?
 
 Test:
 1. Manuellen Modus wählen
 2. Toggle-Button klicken
-3. Mit Multimeter GPIO23 messen:
+3. Mit Multimeter GPIO21 messen:
    - Bei ON: sollte ~0V sein (LOW)
    - Bei OFF: sollte ~3.3V sein (HIGH)
 ```
@@ -196,6 +196,23 @@ Dieses Relais ist Active-Low!
 Ist das Relais falsch herum geschaltet?
 → Heizung geht an wenn sie aus sein sollte?
 → Code ist richtig, Relais ist Active-Low!
+```
+
+**3.5. LED glimmt im AUS-Zustand (Relais schaltet nicht sauber)**
+```
+Symptom:
+→ LED am Relais leuchtet im AUS-Zustand schwach ("glimmen")
+→ Beim Toggle hört man kein sauberes Klicken
+
+Ursache:
+→ Der IN-Pin ist nicht "hart" HIGH (z.B. floating/Open-Drain + Leckströme)
+
+Lösung:
+→ Im Dashboard: "Relais-Einstellungen (Erweitert)"
+   - Heizungsrelais OFF per Open-Drain (floating) = AUS
+   - (Active-Low bleibt i.d.R. EIN)
+→ Alternativ per API /api/settings:
+   { "heaterRelayOpenDrainOff": false }
 ```
 
 **4. Relais defekt?**
