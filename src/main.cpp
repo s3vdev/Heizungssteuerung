@@ -19,12 +19,12 @@
 #define DEFAULT_HEATING_RELAY_PIN HEATING_RELAY_PIN
 #define DEFAULT_PUMP_RELAY_PIN PUMP_RELAY_PIN
 #define RELAY_PIN HEATING_RELAY_PIN  // Legacy alias for backward compatibility
-#define ONE_WIRE_BUS 4        // GPIO4 for DS18B20 sensors (both on same bus)
-#define TRIG_PIN 5            // GPIO5 for JSN-SR04T TRIG
+#define ONE_WIRE_BUS 27       // GPIO27 for DS18B20 sensors (chosen for convenient wiring; avoid strapping pin GPIO4 which can break boot on some boards)
+#define TRIG_PIN 16           // GPIO16 for JSN-SR04T TRIG
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.1"     // Version shown in dashboard
+#define FIRMWARE_VERSION "v2.2.2"     // Version shown in dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -43,8 +43,22 @@
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");  // WebSocket for Serial Monitor
 Preferences prefs;
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
+// NOTE: Do NOT construct OneWire/DallasTemperature as global objects.
+// On some ESP32 boards this can crash during static initialization (before Arduino runtime is ready).
+// We initialize them in setup() instead.
+OneWire* oneWire = nullptr;
+DallasTemperature* sensors = nullptr;
+
+// ========== TANK SENSOR DEBUG ==========
+static volatile unsigned long lastUltrasonicDurationUs = 0;
+static volatile int lastEchoBefore = -1;
+static volatile int lastEchoAfter = -1;
+static volatile float lastUltrasonicDistanceCm = -1.0f;
+static volatile uint8_t lastTankErrorCode = 0; // 0=OK, 1=TIMEOUT, 2=OUT_OF_RANGE
+
+// Smooth tank availability to avoid UI flapping on occasional missed echoes
+static unsigned long lastTankGoodMs = 0;
+static float lastTankGoodDistanceCm = -1.0f;
 
 // ========== TEMPERATURE SENSOR ADDRESSES ==========
 DeviceAddress sensor1Address, sensor2Address;  // Will store unique addresses
@@ -494,6 +508,9 @@ void updateStatistics() {
 
 // ========== READ TANK LEVEL (JSN-SR04T) ==========
 float readTankDistance() {
+    // Capture idle state before triggering (helps diagnose wiring/floating pins)
+    lastEchoBefore = digitalRead(ECHO_PIN);
+
     // Send 10us pulse to TRIG
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
@@ -503,9 +520,13 @@ float readTankDistance() {
     
     // Read ECHO pulse duration (timeout after 30ms)
     long duration = pulseIn(ECHO_PIN, HIGH, ULTRASONIC_TIMEOUT);
+    lastUltrasonicDurationUs = (unsigned long)duration;
+    lastEchoAfter = digitalRead(ECHO_PIN);
     
     // No echo received = sensor error
     if (duration == 0) {
+        lastTankErrorCode = 1;
+        lastUltrasonicDistanceCm = -1.0f;
         return -1.0;
     }
     
@@ -515,9 +536,13 @@ float readTankDistance() {
     
     // Sanity check: JSN-SR04T range 25cm-450cm
     if (distance < 2.0 || distance > 500.0) {
+        lastTankErrorCode = 2;
+        lastUltrasonicDistanceCm = distance;
         return -1.0;
     }
-    
+
+    lastTankErrorCode = 0;
+    lastUltrasonicDistanceCm = distance;
     return distance;
 }
 
@@ -525,17 +550,27 @@ void updateTankLevel() {
     float distance = readTankDistance();
     
     if (distance < 0) {
-        // Sensor error or not available
-        state.tankSensorAvailable = false;
-        state.tankDistance = -1.0;
-        state.tankLiters = 0.0;
-        state.tankPercent = 0;
+        // Sensor error / missed echo: don't immediately flip to "unavailable" because JSN-SR04T can miss pulses.
+        // Keep last known good value for a short grace period to avoid UI flapping.
+        const unsigned long GRACE_MS = 15000; // 15s
+        if (lastTankGoodMs > 0 && (millis() - lastTankGoodMs) <= GRACE_MS) {
+            state.tankSensorAvailable = true;
+            state.tankDistance = lastTankGoodDistanceCm;
+            // Keep liters/percent as-is (based on last good distance)
+        } else {
+            state.tankSensorAvailable = false;
+            state.tankDistance = -1.0;
+            state.tankLiters = 0.0;
+            state.tankPercent = 0;
+        }
         return;
     }
     
     // Sensor working
     state.tankSensorAvailable = true;
     state.tankDistance = distance;
+    lastTankGoodMs = millis();
+    lastTankGoodDistanceCm = distance;
     
     // Calculate fill level
     // fillHeight = tankHeight - distance (distance from sensor to surface)
@@ -764,13 +799,19 @@ void sendTelegramMessage(String message) {
 
 // ========== INITIALIZE TEMPERATURE SENSORS ==========
 void initSensors() {
-    serialLogLn("[Sensor] Initializing DS18B20 sensors on GPIO4...");
-    sensors.begin();
+    serialLogF("[Sensor] Initializing DS18B20 sensors on GPIO%d...\n", ONE_WIRE_BUS);
+    if (!oneWire) {
+        oneWire = new OneWire(ONE_WIRE_BUS);
+    }
+    if (!sensors) {
+        sensors = new DallasTemperature(oneWire);
+    }
+    sensors->begin();
     
     // Wait a bit for sensors to stabilize
     delay(100);
     
-    int deviceCount = sensors.getDeviceCount();
+    int deviceCount = sensors->getDeviceCount();
     
     serialLogF("[Sensor] Found %d DS18B20 sensor(s) on OneWire bus\n", deviceCount);
     
@@ -778,12 +819,12 @@ void initSensors() {
         serialLogLn("[Sensor] ERROR: No sensors found! Check wiring:");
         serialLogLn("  - Red wire (VDD) -> 3.3V");
         serialLogLn("  - Black wire (GND) -> GND");
-        serialLogLn("  - Yellow wire (DQ) -> GPIO4");
-        serialLogLn("  - 4.7kΩ resistor between GPIO4 and 3.3V");
+        serialLogF("  - Yellow wire (DQ) -> GPIO%d\n", ONE_WIRE_BUS);
+        serialLogF("  - 4.7kΩ resistor between GPIO%d and 3.3V\n", ONE_WIRE_BUS);
     }
     
     if (deviceCount >= 1) {
-        sensors.getAddress(sensor1Address, 0);
+        sensors->getAddress(sensor1Address, 0);
         sensor1Found = true;
         // Build complete address string first, then log as one message
         String addrStr = "[Sensor] Sensor 1 (Vorlauf) address: ";
@@ -798,7 +839,7 @@ void initSensors() {
     }
     
     if (deviceCount >= 2) {
-        sensors.getAddress(sensor2Address, 1);
+        sensors->getAddress(sensor2Address, 1);
         sensor2Found = true;
         // Build complete address string first, then log as one message
         String addrStr = "[Sensor] Sensor 2 (Rücklauf) address: ";
@@ -818,11 +859,14 @@ void initSensors() {
 
 // ========== TEMPERATURE READING ==========
 void readTemperatures() {
-    sensors.requestTemperatures();
+    if (!sensors) {
+        return;
+    }
+    sensors->requestTemperatures();
     
     // Read sensor 1 (Vorlauf)
     if (sensor1Found) {
-        float temp = sensors.getTempC(sensor1Address);
+        float temp = sensors->getTempC(sensor1Address);
         if (temp != DEVICE_DISCONNECTED_C && temp >= -55.0 && temp <= 125.0) {
             state.tempVorlauf = temp;
         } else {
@@ -836,7 +880,7 @@ void readTemperatures() {
     
     // Read sensor 2 (Rücklauf)
     if (sensor2Found) {
-        float temp = sensors.getTempC(sensor2Address);
+        float temp = sensors->getTempC(sensor2Address);
         if (temp != DEVICE_DISCONNECTED_C && temp >= -55.0 && temp <= 125.0) {
             state.tempRuecklauf = temp;
         } else {
@@ -1011,7 +1055,9 @@ void checkFailsafe() {
             Serial.println("FAILSAFE: All sensors failed, turning heater OFF");
             setHeater(false);
         }
-        if (state.pumpOn) {
+        // If user explicitly enabled manual pump override in manual mode, don't fight it.
+        // Otherwise, turn pump OFF for safety to avoid oscillation with cooldown/manual logic.
+        if (state.pumpOn && !(state.mode == "manual" && state.pumpManualMode)) {
             Serial.println("FAILSAFE: All sensors failed, turning pump OFF");
             setPump(false, false);
         }
@@ -1565,9 +1611,15 @@ void setupWebServer() {
         serialLog(state.pumpOn ? "ON" : "OFF");
         serialLog(" to ");
         serialLogLn(newPumpState ? "ON" : "OFF");
-        
+
+        // IMPORTANT: Set manual override flag BEFORE switching the GPIO.
+        // The main loop can run concurrently and cooldown logic may otherwise turn the pump OFF immediately.
+        state.pumpManualMode = newPumpState;
+        if (state.pumpManualMode) {
+            // Manual pump ON should not be affected by a stale heating cooldown timestamp.
+            lastHeatingOffTime = 0;
+        }
         setPump(newPumpState, true);  // Manual override
-        state.pumpManualMode = newPumpState;  // Set manual mode flag
         
         // Save pump state to NVS
         prefs.begin("heater", false);
@@ -1917,6 +1969,32 @@ void setupWebServer() {
         serializeJson(doc, json);
         request->send(200, "application/json", json);
     });
+
+    // API: Tank debug (diagnose JSN-SR04T wiring/levels)
+    server.on("/api/tank-debug", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<384> doc;
+        doc["trigPin"] = TRIG_PIN;
+        doc["echoPin"] = ECHO_PIN;
+        doc["echoBefore"] = lastEchoBefore;
+        doc["echoAfter"] = lastEchoAfter;
+        doc["durationUs"] = lastUltrasonicDurationUs;
+        doc["distanceCm"] = lastUltrasonicDistanceCm;
+        doc["tankAvailable"] = state.tankSensorAvailable;
+
+        const char* err = "OK";
+        if (lastTankErrorCode == 1) err = "TIMEOUT_NO_ECHO";
+        else if (lastTankErrorCode == 2) err = "OUT_OF_RANGE";
+        doc["errorCode"] = lastTankErrorCode;
+        doc["error"] = err;
+
+        // Current pin reads (useful if ECHO is stuck HIGH/LOW)
+        doc["echoReadNow"] = digitalRead(ECHO_PIN);
+        doc["trigReadNow"] = digitalRead(TRIG_PIN);
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
     
     // API: Update location
     server.on("/api/location", HTTP_POST, 
@@ -2162,10 +2240,14 @@ void setup() {
     serialLogLn("[Setup] Pump relay initialized to OFF");
     // Initialize ultrasonic sensor pins
     pinMode(TRIG_PIN, OUTPUT);
-    pinMode(ECHO_PIN, INPUT);
+    // Use pulldown to avoid floating ECHO when sensor is disconnected/miswired.
+    // NOTE: JSN-SR04T ECHO is 5V on many boards -> requires a voltage divider to 3.3V for ESP32!
+    pinMode(ECHO_PIN, INPUT_PULLDOWN);
     digitalWrite(TRIG_PIN, LOW);
     
-    if (!LittleFS.begin(true)) {
+    // IMPORTANT: On some ESP32 boards/cores, auto-format-on-fail can crash inside esp_littlefs_format_partition().
+    // We avoid formatting here and simply continue without filesystem if mount fails.
+    if (!LittleFS.begin(false)) {
         Serial.println("⚠️ WARNING: LittleFS mount failed!");
         Serial.println("Continuing without filesystem - Web server may not work properly");
         // DON'T return - continue anyway, maybe filesystem isn't critical

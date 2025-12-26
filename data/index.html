@@ -2542,8 +2542,15 @@
             }
             
             // Tank level
-            document.getElementById('tankHeight').value = currentState.tankHeight;
-            document.getElementById('tankCapacity').value = currentState.tankCapacity;
+            // Don't overwrite user edits while typing (status refresh calls updateUI frequently)
+            const tankHeightEl = document.getElementById('tankHeight');
+            const tankCapacityEl = document.getElementById('tankCapacity');
+            if (tankHeightEl && !tankHeightEl.dataset.userEditing && document.activeElement !== tankHeightEl) {
+                tankHeightEl.value = currentState.tankHeight;
+            }
+            if (tankCapacityEl && !tankCapacityEl.dataset.userEditing && document.activeElement !== tankCapacityEl) {
+                tankCapacityEl.value = currentState.tankCapacity;
+            }
             
             if (currentState.tankAvailable) {
                 document.getElementById('tankAvailableContainer').style.display = 'block';
@@ -2944,6 +2951,33 @@
                 showToast('⚠️ Speichern im Demo-Modus nicht möglich. Nach Reload wieder Standard.', 'warning', 4000);
             }
         }
+
+        // Prevent tank inputs from being reset by periodic status updates while user is typing.
+        (function setupTankInputGuards() {
+            const tankHeightEl = document.getElementById('tankHeight');
+            const tankCapacityEl = document.getElementById('tankCapacity');
+            if (!tankHeightEl || !tankCapacityEl) return;
+
+            const markEditing = (el) => { el.dataset.userEditing = '1'; };
+            const clearEditing = (el) => { delete el.dataset.userEditing; };
+
+            // Update local state on each keystroke so UI stays consistent even before onchange fires
+            tankHeightEl.addEventListener('input', () => {
+                markEditing(tankHeightEl);
+                const v = parseFloat(tankHeightEl.value);
+                if (!Number.isNaN(v)) currentState.tankHeight = v;
+            });
+            tankCapacityEl.addEventListener('input', () => {
+                markEditing(tankCapacityEl);
+                const v = parseFloat(tankCapacityEl.value);
+                if (!Number.isNaN(v)) currentState.tankCapacity = v;
+            });
+
+            tankHeightEl.addEventListener('focus', () => markEditing(tankHeightEl));
+            tankCapacityEl.addEventListener('focus', () => markEditing(tankCapacityEl));
+            tankHeightEl.addEventListener('blur', () => clearEditing(tankHeightEl));
+            tankCapacityEl.addEventListener('blur', () => clearEditing(tankCapacityEl));
+        })();
         
         function simulateSensorError() {
             if (!isLocalMode) return;

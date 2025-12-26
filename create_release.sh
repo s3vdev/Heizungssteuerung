@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# GitHub Release Script für v2.2.1
+# GitHub Release Script für v2.2.2
 
 REPO="s3vdev/Heizungssteuerung"
 TAG="v2.2.1"
-ZIP_FILE="ESP32-Heizungssteuerung-v2.2.1.zip"
-RELEASE_NOTES="RELEASE_NOTES_v2.2.1.md"
+TAG="v2.2.2"
+ZIP_FILE="ESP32-Heizungssteuerung-v2.2.2.zip"
+RELEASE_NOTES="RELEASE_NOTES_v2.2.2.md"
 
 echo "📦 Erstelle GitHub Release für $TAG..."
 

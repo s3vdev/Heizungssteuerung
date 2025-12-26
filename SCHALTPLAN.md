@@ -35,7 +35,7 @@
         │  │               │  │  │  COM ────────┐     │  │  COM ────────┐     │
         │  │ 3.3V ──→ +    │  │  │  NO  ────────┼─────┼─│  NO  ────────┼─────┼─
         │  │               │  │  │              │     │ │              │     │ │
-        │  │ GPIO4 ──→ BUS │  │  └──────────────┼─────┘ └──────────────┼─────┘ │
+        │  │ GPIO27 ─→ BUS │  │  └──────────────┼─────┘ └──────────────┼─────┘ │
         │  │               │  │                  │                      │       │
         │  │ GPIO21 ──→ RLY│  │                  │                      │       │
         │  │ GPIO22 ──→ RLY│  │                  │                      │       │
@@ -45,12 +45,12 @@
                    │                                                          │
                    │                    zu Heizgerät        zu Umwälzpumpe ───┘
                    │
-                   │ GPIO4 (OneWire Bus)
+                   │ GPIO27 (OneWire Bus)
                    │
         ┌──────────┴──────────────────────────────┐
         │                                          │
         │  [4.7kΩ Pull-Up Widerstand]             │
-        │  zwischen GPIO4 und 3.3V                │
+        │  zwischen GPIO27 und 3.3V               │
         │                                          │
         ├─────────────┬────────────────────────────┤
         │             │                            │
@@ -59,7 +59,7 @@
     │ (Vorlauf)  │ │  (Rücklauf)  │              │
     │            │ │              │              │
     │ Rot   → 3.3V│ │ Rot   → 3.3V│              │
-    │ Gelb  → GPIO4│ │Gelb  → GPIO4│ (parallel!) │
+    │ Gelb  → GPIO27││Gelb  → GPIO27│ (parallel!)│
     │ Schwarz→ GND│ │Schwarz→ GND │              │
     └────────────┘ └──────────────┘              │
                                                   │
@@ -77,8 +77,8 @@
 | **GND** | Gemeinsame Masse | GND zu allem! |
 | **3.3V** | DS18B20 VDD (beide) + Pull-Up | Versorgung Sensoren |
 | **5V** (Ausgang) | Relais VCC (beide) + JSN-SR04T VCC (optional) | Versorgung für 5V-Komponenten |
-| **GPIO4** | DS18B20 DATA (beide) | OneWire Bus |
-| **GPIO5** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
+| **GPIO27** | DS18B20 DATA (beide) | OneWire Bus |
+| **GPIO16** | JSN-SR04T TRIG | Ultraschall Trigger (optional) |
 | **GPIO18** | JSN-SR04T ECHO | Ultraschall Echo (optional) |
 | **GPIO21** | Relais #1 IN (Heizung) | Steuerung (Active-Low!) |
 | **GPIO22** | Relais #2 IN (Pumpe) | Steuerung (Active-Low!) |
@@ -88,10 +88,10 @@
 | Kabel | Farbe | Verbindung |
 |-------|-------|------------|
 | **VDD** | Rot | ESP32 3.3V |
-| **DATA** | Gelb | ESP32 GPIO4 |
+| **DATA** | Gelb | ESP32 GPIO27 |
 | **GND** | Schwarz | ESP32 GND |
 
-**WICHTIG:** 4.7kΩ Widerstand zwischen GPIO4 und 3.3V!
+**WICHTIG:** 4.7kΩ Widerstand zwischen GPIO27 und 3.3V!
 
 ### Relais-Module (2x 1-Kanal, Active-Low)
 
@@ -138,7 +138,7 @@
 | Sensor Pin | Verbindung | Beschreibung |
 |------------|------------|--------------|
 | **VCC** | ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+ | Stromversorgung |
-| **TRIG** | ESP32 GPIO5 | Trigger-Signal |
+| **TRIG** | ESP32 GPIO16 | Trigger-Signal |
 | **ECHO** | ESP32 GPIO18 | Echo-Rückmeldung |
 | **GND** | GND | Masse |
 
@@ -223,17 +223,17 @@
 ### Phase 2: Sensoren anschließen
 
 3. **Pull-Up Widerstand:**
-   - 4.7kΩ zwischen ESP32 GPIO4 und 3.3V löten
+   - 4.7kΩ zwischen ESP32 GPIO27 und 3.3V löten
    - Am besten auf kleiner Lochrasterplatine
 
 4. **DS18B20 #1 (Vorlauf):**
    - Rot → 3.3V
-   - Gelb → GPIO4
+   - Gelb → GPIO27
    - Schwarz → GND
 
 5. **DS18B20 #2 (Rücklauf):**
    - Rot → 3.3V (parallel zu #1)
-   - Gelb → GPIO4 (parallel zu #1)
+   - Gelb → GPIO27 (parallel zu #1)
    - Schwarz → GND (parallel zu #1)
 
 6. **Test:**
@@ -264,7 +264,7 @@
 9. **Sensor anschließen:**
    - VCC → ESP32 5V Pin (direkt möglich) ODER LM2596S OUT+
    - GND → Gemeinsame Masse
-   - TRIG → ESP32 GPIO5
+   - TRIG → ESP32 GPIO16
    - ECHO → ESP32 GPIO18
 
 10. **Test:**

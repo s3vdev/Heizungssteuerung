@@ -103,10 +103,10 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 
 | Komponente | Pin | Beschreibung |
 |------------|-----|--------------|
-| DS18B20 #1 (Vorlauf) | GPIO4 | One-Wire Bus |
-| DS18B20 #2 (Rücklauf) | GPIO4 | One-Wire Bus (parallel) |
-| Pull-Up Widerstand | GPIO4 → 3.3V | 4.7kΩ (einer für beide Sensoren) |
-| JSN-SR04T TRIG | GPIO5 | Ultraschall Trigger |
+| DS18B20 #1 (Vorlauf) | GPIO27 | One-Wire Bus |
+| DS18B20 #2 (Rücklauf) | GPIO27 | One-Wire Bus (parallel) |
+| Pull-Up Widerstand | GPIO27 → 3.3V | 4.7kΩ (einer für beide Sensoren) |
+| JSN-SR04T TRIG | GPIO16 | Ultraschall Trigger |
 | JSN-SR04T ECHO | GPIO18 | Ultraschall Echo |
 | JSN-SR04T VCC | 5V (vom ESP32 oder LM2596S) | Versorgung |
 | JSN-SR04T GND | GND | Gemeinsame Masse |
@@ -123,7 +123,7 @@ Ein vollständiges PlatformIO-Projekt zur Steuerung einer Heizung über ESP32 mi
 **Beide DS18B20 parallel am gleichen OneWire-Bus:**
 - Alle **GND** zusammen an ESP32 GND
 - Alle **VDD** zusammen an ESP32 3.3V
-- Alle **DATA** zusammen an GPIO4
+- Alle **DATA** zusammen an GPIO27
 - **Ein** 4.7kΩ Pull-Up zwischen DATA und 3.3V
 
 Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durch Software!
@@ -131,7 +131,7 @@ Jeder DS18B20 hat eine eindeutige 64-Bit-Adresse → automatische Erkennung durc
 **JSN-SR04T Ultraschall-Sensor (optional):**
 - **VCC** → ESP32 5V Pin (direkt am ESP32 möglich)
 - **GND** → ESP32 GND
-- **TRIG** → ESP32 GPIO5
+- **TRIG** → ESP32 GPIO16
 - **ECHO** → ESP32 GPIO18
 - **Montage**: Von oben in den Tank schauen (misst Abstand zur Flüssigkeitsoberfläche)
 - **Messbereich**: 25 cm - 450 cm
@@ -517,7 +517,7 @@ Der ESP32 sendet automatisch Telegram-Nachrichten bei:
 - **Fallback**: ESP32 startet automatisch im AP-Mode nach 20s
 
 ### Problem: Sensor zeigt "Sensor fehlt!"
-- **Check**: Verkabelung prüfen (GPIO4, Pull-Up 4.7kΩ)
+- **Check**: Verkabelung prüfen (GPIO27, Pull-Up 4.7kΩ)
 - **Sicherheit**: Heizung wird automatisch ausgeschaltet
 
 ### Problem: mDNS funktioniert nicht
