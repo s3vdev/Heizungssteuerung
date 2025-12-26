@@ -3387,6 +3387,7 @@
             statusText.textContent = 'Bereite Upload vor...';
             
             try {
+                let lastPercentComplete = 0;
                 const formData = new FormData();
                 formData.append('update', file);
                 
@@ -3395,6 +3396,7 @@
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
                         const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        lastPercentComplete = percentComplete;
                         progressBar.style.width = percentComplete + '%';
                         progressBar.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024 / 1024).toFixed(1)} MB von ${(e.total / 1024 / 1024).toFixed(1)} MB`;
@@ -3547,6 +3549,18 @@
                 });
                 
                 xhr.addEventListener('error', () => {
+                    // If the ESP32 reboots right after finishing the upload, browsers sometimes report a network error.
+                    // Treat this as success if we already reached 100%.
+                    if ((progressBar.style.width === '100%' || lastPercentComplete >= 98) && statusText.textContent.indexOf('Warte') === -1) {
+                        statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
+                        statusText.style.color = '#27ae60';
+                        showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                        waitingForReboot = true;
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        return;
+                    }
                     throw new Error('Netzwerkfehler beim Upload');
                 });
                 
@@ -3603,6 +3617,7 @@
             statusText.textContent = 'Bereite Frontend-Upload vor...';
             
             try {
+                let lastPercentComplete = 0;
                 const formData = new FormData();
                 formData.append('update', file);
                 
@@ -3611,6 +3626,7 @@
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
                         const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        lastPercentComplete = percentComplete;
                         progressBar.style.width = percentComplete + '%';
                         progressBar.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024).toFixed(1)} KB von ${(e.total / 1024).toFixed(1)} KB`;
@@ -3763,6 +3779,18 @@
                 });
                 
                 xhr.addEventListener('error', () => {
+                    // If the ESP32 reboots right after finishing the upload, browsers sometimes report a network error.
+                    // Treat this as success if we already reached 100%.
+                    if ((progressBar.style.width === '100%' || lastPercentComplete >= 98) && statusText.textContent.indexOf('Warte') === -1) {
+                        statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
+                        statusText.style.color = '#27ae60';
+                        showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
+                        waitingForReboot = true;
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                        return;
+                    }
                     throw new Error('Netzwerkfehler beim Upload');
                 });
                 

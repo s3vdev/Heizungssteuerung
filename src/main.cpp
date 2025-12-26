@@ -24,7 +24,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.2"     // Version shown in dashboard
+#define FIRMWARE_VERSION "v2.2.3"     // Version shown in dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -2100,15 +2100,11 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("OTA Update successful, scheduling reboot in 5 seconds...");
+                Serial.println("OTA Update successful, scheduling reboot in 8 seconds...");
                 Serial.flush();
                 // Schedule reboot after a short delay to allow response to be sent
-                scheduledRebootTime = millis() + 5000;  // 5 seconds
+                scheduledRebootTime = millis() + 8000;  // 8 seconds
                 rebootScheduled = true;
-                // Close the connection immediately
-                if (request->client()) {
-                    request->client()->close();
-                }
             } else {
                 Serial.println("OTA Update FAILED - no reboot");
                 Update.printError(Serial);
@@ -2162,15 +2158,11 @@ void setupWebServer() {
             // Response is already sent in final handler, so we just check for reboot
             bool shouldReboot = !Update.hasError();
             if (shouldReboot) {
-                Serial.println("LittleFS OTA Update successful, scheduling reboot in 5 seconds...");
+                Serial.println("LittleFS OTA Update successful, scheduling reboot in 8 seconds...");
                 Serial.flush();
                 // Schedule reboot after a short delay to allow response to be sent
-                scheduledRebootTime = millis() + 5000;  // 5 seconds
+                scheduledRebootTime = millis() + 8000;  // 8 seconds
                 rebootScheduled = true;
-                // Close the connection immediately
-                if (request->client()) {
-                    request->client()->close();
-                }
             } else {
                 Serial.println("LittleFS OTA Update FAILED - no reboot");
                 Update.printError(Serial);
@@ -2226,7 +2218,10 @@ void setupWebServer() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    serialLogLn("\n\n=== ESP32 Heater Control v2.2.1 ===");
+    {
+        String banner = String("\n\n=== ESP32 Heater Control ") + FIRMWARE_VERSION + " ===";
+        serialLogLn(banner.c_str());
+    }
     
     bootTime = millis();
 
