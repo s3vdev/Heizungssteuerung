@@ -24,7 +24,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.3"     // Version shown in dashboard
+#define FIRMWARE_VERSION "v2.2.4"     // Version shown in dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -230,6 +230,7 @@ const unsigned long WIFI_RECONNECT_INTERVAL = 60000;  // Only try reconnect ever
 // Telegram notification flags
 bool sensorErrorNotified = false;
 bool tankLowNotified = false;
+unsigned long lastTankLowTelegramMs = 0;
 
 // ========== SERIAL MONITOR (WebSocket) ==========
 #define LOG_BUFFER_SIZE 200  // Increased to store more boot messages
@@ -580,6 +581,13 @@ void updateTankLevel() {
     if (fillHeight < 0) fillHeight = 0;
     if (fillHeight > state.tankHeight) fillHeight = state.tankHeight;
     
+    // If tank geometry isn't configured, don't compute percent/liters (avoid div-by-zero / spam).
+    if (state.tankHeight <= 0.1f || state.tankCapacity <= 0.1f) {
+        state.tankPercent = 0;
+        state.tankLiters = 0.0f;
+        return;
+    }
+
     // Calculate percentage
     state.tankPercent = (int)((fillHeight / state.tankHeight) * 100.0);
     
@@ -590,12 +598,17 @@ void updateTankLevel() {
     state.tankLiters = round(state.tankLiters * 10) / 10.0;
     
     // Check for low tank level (< 20%)
-    if (state.tankPercent < 20 && !tankLowNotified && isTelegramConfigured()) {
+    // Only notify when heating is active (avoid spam when heating is OFF).
+    // Also apply a minimum interval to avoid repeated notifications due to sensor flapping/reboots.
+    const unsigned long MIN_TANK_LOW_TELEGRAM_MS = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+    const bool intervalOk = (lastTankLowTelegramMs == 0) || (millis() - lastTankLowTelegramMs >= MIN_TANK_LOW_TELEGRAM_MS);
+    if (state.heatingOn && state.tankPercent < 20 && !tankLowNotified && intervalOk && isTelegramConfigured()) {
         String msg = "🪫 TANK NIEDRIG!\n\n";
         msg += "Füllstand: " + String(state.tankPercent) + "% (" + String(state.tankLiters, 1) + "L)\n";
         msg += "Bitte nachfüllen!";
         sendTelegramMessage(msg);
         tankLowNotified = true;
+        lastTankLowTelegramMs = millis();
     } else if (state.tankPercent >= 25 && tankLowNotified) {
         // Reset flag when tank is refilled (25% to have some hysteresis)
         tankLowNotified = false;

@@ -1327,7 +1327,7 @@
             </div>
 
             <!-- NEW: Relay Configuration Card (Advanced) -->
-            <div class="card" id="relayConfigCard">
+            <div class="card" id="relayConfigCard" data-collapse-default="collapsed">
                 <div class="card-header">
                     <div class="card-title">Relais-Einstellungen (Erweitert)</div>
                 </div>
@@ -1514,7 +1514,7 @@
             
             <!-- NEW: Statistics Card -->
             <div class="card">
-                <div class="card-header collapsible" onclick="toggleStatistics()">
+                <div class="card-header collapsible">
                     <div class="card-title">
                         <i class="fas fa-chevron-right collapse-arrow" id="statisticsArrow"></i>
                         Statistik
@@ -3205,20 +3205,99 @@
             document.getElementById('serialMonitor').innerHTML = '<div style="color: #608b4e;">// Log gelöscht</div>';
         }
         
-        // ========== STATISTICS COLLAPSE FUNCTION ==========
-        function toggleStatistics() {
-            const content = document.getElementById('statisticsContent');
-            const arrow = document.getElementById('statisticsArrow');
-            
-            if (content.classList.contains('collapsed')) {
-                content.classList.remove('collapsed');
-                content.classList.add('expanded');
-                arrow.classList.add('expanded');
-            } else {
-                content.classList.remove('expanded');
-                content.classList.add('collapsed');
-                arrow.classList.remove('expanded');
-            }
+        // ========== COLLAPSIBLE CARDS (persisted in localStorage) ==========
+        function initCollapsibleCards() {
+            const STORAGE_PREFIX = 'ui:cardCollapse:';
+
+            const getDirectChild = (parent, className) => {
+                for (const el of parent.children) {
+                    if (el.classList && el.classList.contains(className)) return el;
+                }
+                return null;
+            };
+
+            const slugify = (s) => (s || '')
+                .toLowerCase()
+                .trim()
+                .replace(/\s+/g, '_')
+                .replace(/[^a-z0-9_äöüß-]/g, '')
+                .slice(0, 60);
+
+            const setCollapsed = (content, arrow, collapsed) => {
+                content.classList.toggle('collapsed', collapsed);
+                content.classList.toggle('expanded', !collapsed);
+                if (arrow) arrow.classList.toggle('expanded', !collapsed);
+            };
+
+            const getStorageKey = (card, titleText, index) => {
+                if (card.id) return STORAGE_PREFIX + card.id;
+                const base = slugify(titleText) || `card_${index}`;
+                return STORAGE_PREFIX + base + '_' + index; // index makes it stable even for duplicate titles
+            };
+
+            const isInteractiveHeaderClick = (target) => {
+                return !!target.closest('input, select, textarea, button, a, label');
+            };
+
+            const cards = document.querySelectorAll('.container .card');
+            cards.forEach((card, index) => {
+                // Determine header + content parent
+                let contentParent = card;
+                let header = getDirectChild(card, 'card-header');
+                if (!header) {
+                    const body = getDirectChild(card, 'card-body');
+                    if (body) {
+                        const bodyHeader = getDirectChild(body, 'card-header');
+                        if (bodyHeader) {
+                            header = bodyHeader;
+                            contentParent = body;
+                        }
+                    }
+                }
+                if (!header) return;
+                if (header.dataset.collapseInited === '1') return;
+                header.dataset.collapseInited = '1';
+
+                header.classList.add('collapsible');
+
+                // Ensure arrow exists
+                const titleEl = header.querySelector('.card-title');
+                const titleText = titleEl ? titleEl.textContent.trim() : '';
+                let arrow = titleEl ? titleEl.querySelector('.collapse-arrow') : null;
+                if (titleEl && !arrow) {
+                    arrow = document.createElement('i');
+                    arrow.className = 'fas fa-chevron-right collapse-arrow';
+                    titleEl.prepend(arrow);
+                }
+
+                // Ensure we have a .card-content sibling (wrap everything after header if needed)
+                let content = header.nextElementSibling;
+                if (!(content && content.classList && content.classList.contains('card-content'))) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'card-content expanded';
+
+                    // Move all nodes after header into wrapper (including text nodes)
+                    while (header.nextSibling) {
+                        wrapper.appendChild(header.nextSibling);
+                    }
+                    contentParent.appendChild(wrapper);
+                    content = wrapper;
+                }
+
+                const storageKey = getStorageKey(card, titleText, index);
+                const stored = localStorage.getItem(storageKey);
+                const defaultCollapsed = (card.dataset.collapseDefault === 'collapsed') || content.classList.contains('collapsed');
+                const collapsed = stored ? (stored === 'collapsed') : defaultCollapsed;
+
+                setCollapsed(content, arrow, collapsed);
+
+                header.addEventListener('click', (e) => {
+                    if (isInteractiveHeaderClick(e.target)) return;
+                    const nowCollapsed = !content.classList.contains('collapsed');
+                    setCollapsed(content, arrow, nowCollapsed);
+                    localStorage.setItem(storageKey, nowCollapsed ? 'collapsed' : 'expanded');
+                });
+            });
         }
         
         // ========== FILE TYPE VALIDATION ==========
@@ -3810,6 +3889,7 @@
         }
         
         // ========== INITIALIZATION ==========
+        initCollapsibleCards();
         setInterval(() => { 
             if (!isLocalMode) {
                 updateStatus();
