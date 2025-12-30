@@ -6,6 +6,37 @@
     <title>Heizungssteuerung</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e8ba3 100%);
+            --text: #2c3e50;
+            --muted: #7f8c8d;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-border: rgba(255, 255, 255, 0.2);
+            --border: #ecf0f1;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --input-bg: rgba(255, 255, 255, 0.9);
+            --input-border: rgba(0, 0, 0, 0.12);
+            --modal-bg: rgba(255, 255, 255, 0.98);
+            --overlay-bg: rgba(0, 0, 0, 0.55);
+            --mono-bg: #1e1e1e;
+            --mono-text: #d4d4d4;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient: linear-gradient(135deg, #0b1220 0%, #0f1b33 50%, #111827 100%);
+            --text: #e6edf3;
+            --muted: #9aa7b2;
+            --card-bg: rgba(17, 24, 39, 0.88);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.10);
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+            --input-bg: rgba(255, 255, 255, 0.06);
+            --input-border: rgba(255, 255, 255, 0.14);
+            --modal-bg: rgba(17, 24, 39, 0.96);
+            --overlay-bg: rgba(0, 0, 0, 0.70);
+            --mono-bg: #0b1220;
+            --mono-text: #e6edf3;
+        }
         * {
             margin: 0;
             padding: 0;
@@ -14,24 +45,24 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e8ba3 100%);
+            background: var(--bg-gradient);
             min-height: 100vh;
             padding: 20px;
-            color: #2c3e50;
+            color: var(--text);
         }
         
         .header {
             max-width: 1200px;
             margin: 0 auto 20px;
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--card-bg);
             backdrop-filter: blur(10px);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid var(--card-border);
         }
         
         .header-left {
@@ -43,7 +74,7 @@
         .header h1 {
             font-size: 22px;
             font-weight: 600;
-            color: #2c3e50;
+            color: var(--text);
         }
         
         .version-badge {
@@ -78,7 +109,7 @@
         
         .current-time {
             font-size: 16px;
-            color: #2c3e50;
+            color: var(--text);
             font-weight: 600;
             font-variant-numeric: tabular-nums;
         }
@@ -94,7 +125,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            color: #7f8c8d;
+            color: var(--muted);
         }
         
         .wifi-icon {
@@ -191,12 +222,12 @@
         }
         
         .card {
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--card-bg);
             backdrop-filter: blur(10px);
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow);
             padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid var(--card-border);
         }
         
         .card-header {
@@ -205,7 +236,7 @@
             align-items: center;
             margin-bottom: 20px;
             padding-bottom: 12px;
-            border-bottom: 1px solid #ecf0f1;
+            border-bottom: 1px solid var(--border);
         }
         
         .card-header.collapsible {
@@ -220,16 +251,55 @@
         .card-title {
             font-size: 16px;
             font-weight: 600;
-            color: #2c3e50;
+            color: var(--text);
             display: flex;
             align-items: center;
             gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .collapse-arrow {
             font-size: 12px;
-            color: #7f8c8d;
+            color: var(--muted);
             transition: transform 0.3s ease;
+        }
+
+        .theme-switch {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        [data-theme="dark"] .theme-switch {
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .theme-switch i {
+            color: var(--muted);
+        }
+        .theme-switch select {
+            border: 1px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            outline: none;
+        }
+        .theme-switch select:focus {
+            border-color: rgba(102, 126, 234, 0.8);
         }
         
         .collapse-arrow.expanded {
@@ -925,7 +995,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.6);
+            background: var(--overlay-bg);
             backdrop-filter: blur(4px);
             z-index: 1000;
             align-items: center;
@@ -938,7 +1008,7 @@
         }
         
         .modal {
-            background: rgba(255, 255, 255, 0.98);
+            background: var(--modal-bg);
             backdrop-filter: blur(10px);
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -949,6 +1019,58 @@
             overflow-y: auto;
             animation: slideUp 0.3s ease-out;
         }
+
+        /* Reboot/Update Overlay */
+        .reboot-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1100;
+            background: var(--overlay-bg);
+            backdrop-filter: blur(6px);
+            align-items: center;
+            justify-content: center;
+        }
+        .reboot-overlay.active { display: flex; }
+        .reboot-card {
+            width: min(520px, 92vw);
+            background: var(--modal-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 18px 18px 16px;
+            color: var(--text);
+        }
+        .reboot-title {
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255,255,255,0.25);
+            border-top-color: rgba(255,255,255,0.85);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        [data-theme="light"] .spinner {
+            border: 3px solid rgba(0,0,0,0.12);
+            border-top-color: rgba(0,0,0,0.55);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .reboot-sub {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+        .reboot-sub code { color: var(--text); }
         
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -1071,12 +1193,53 @@
             .temp-value {
                 font-size: 36px;
             }
+            
+            .card-header {
+                padding-bottom: 8px;
+                margin-bottom: 12px;
+            }
+            
+            .card-title {
+                font-size: 14px;
+            }
+            
+            .card-subtitle {
+                font-size: 11px;
+                margin-left: 8px;
+            }
+            
+            /* Compact collapsed card headers on mobile */
+            .card-content.collapsed ~ .card-header .card-title,
+            .card-header:has(+ .card-content.collapsed) .card-title {
+                font-size: 13px;
+            }
+        }
+        
+        /* Mobile: Hide subtitle when collapsed for better space usage */
+        @media (max-width: 768px) {
+            .card-content.collapsed ~ .card-header .card-subtitle,
+            .card-header:has(+ .card-content.collapsed) .card-subtitle {
+                display: none;
+            }
         }
     </style>
 </head>
 <body>
     <!-- Toast Notification Container -->
     <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Reboot/Update Overlay (shown during OTA reboot / reconnect) -->
+    <div class="reboot-overlay" id="rebootOverlay">
+        <div class="reboot-card">
+            <div class="reboot-title">
+                <div class="spinner"></div>
+                <div id="rebootOverlayTitle">Update wird installiert…</div>
+            </div>
+            <div class="reboot-sub" id="rebootOverlaySub">
+                Der ESP32 startet neu und ist gleich wieder erreichbar. Wir versuchen automatisch neu zu verbinden…
+            </div>
+        </div>
+    </div>
     
     <!-- OTA Update Modal -->
     <div class="modal-overlay" id="otaModal">
@@ -1137,6 +1300,48 @@
             </div>
         </div>
     </div>
+
+    <!-- Statistics Details Modal -->
+    <div class="modal-overlay" id="statsModal">
+        <div class="modal" style="max-width: 760px;">
+            <div class="modal-header">
+                <div class="modal-title">📊 Statistik Details</div>
+                <button class="modal-close" onclick="closeStatsModal()">×</button>
+            </div>
+
+            <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
+                Tageswerte werden auf dem ESP32 gespeichert (kleine Ring-History, spart Speicher). Für aussagekräftige Tages-/Wochenwerte muss NTP aktiv sein.
+            </div>
+
+            <div id="statsModalSummary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;"></div>
+
+            <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
+                <div style="font-weight: 700; color: var(--text);">Letzte Tage</div>
+                <div style="display:flex; align-items:center; gap: 8px;">
+                    <select id="statsRangeSelect" class="setting-input" style="max-width: 130px; font-size: 12px;" onchange="renderStatsModal(window.__lastStatsHistory || {})">
+                        <option value="7">7 Tage</option>
+                        <option value="14" selected>14 Tage</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="refreshStatsModal()" style="font-size: 12px; padding: 6px 10px;">Aktualisieren</button>
+                </div>
+            </div>
+
+            <div id="statsModalTableWrap" style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="text-align:left; border-bottom: 1px solid var(--border); color: var(--muted);">
+                            <th style="padding: 8px 6px;">Datum</th>
+                            <th style="padding: 8px 6px;">Schaltungen</th>
+                            <th style="padding: 8px 6px;">Heizung ON</th>
+                            <th style="padding: 8px 6px;">Ø Vorlauf</th>
+                            <th style="padding: 8px 6px;">Ø Rücklauf</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statsModalTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     
     <div class="header">
         <div class="header-left">
@@ -1158,6 +1363,14 @@
                     <span class="header-info-label">NTP:</span>
                     <span class="ntp-status" id="ntpStatus">--</span>
                 </div>
+            </div>
+            <div class="theme-switch" title="Theme">
+                <i class="fas fa-circle-half-stroke"></i>
+                <select id="themeSelect" onchange="setThemeMode(this.value)">
+                    <option value="system">System</option>
+                    <option value="light">Hell</option>
+                    <option value="dark">Dunkel</option>
+                </select>
             </div>
             <div class="current-time" id="currentTime">--:--</div>
             <div class="status-indicator">
@@ -1399,13 +1612,16 @@
 
         <div class="right-column">
             <!-- NEW: Weather Card -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">🌤️ Wetter</div>
+            <div class="card" id="weatherCard">
+                <div class="card-header collapsible">
+                    <div class="card-title">
+                        <i class="fas fa-chevron-right collapse-arrow"></i>
+                        <span id="weatherTitle">🌤️ Wetter</span>
+                    </div>
                     <div class="card-subtitle" id="weatherLocation" style="font-size: 12px; color: #95a5a6;"></div>
                 </div>
                 
-                <div id="weatherContent">
+                <div class="card-content expanded" id="weatherContent">
                     <div class="weather-error" id="weatherErrorMsg">Bitte zuerst einen Standort in den Einstellungen eintragen, um Wetterdaten abzurufen.</div>
                 </div>
             </div>
@@ -1513,12 +1729,13 @@
             </div>
             
             <!-- NEW: Statistics Card -->
-            <div class="card">
+            <div class="card" id="statisticsCard">
                 <div class="card-header collapsible">
                     <div class="card-title">
                         <i class="fas fa-chevron-right collapse-arrow" id="statisticsArrow"></i>
-                        Statistik
+                        <span id="statisticsTitle">Statistik</span>
                     </div>
+                    <button class="btn btn-secondary" onclick="openStatsModal(event)" style="font-size: 12px; padding: 6px 10px;">Details</button>
                 </div>
                 
                 <div class="card-content collapsed" id="statisticsContent">
@@ -1633,6 +1850,42 @@
         
         let isLocalMode = false;
         let simulationInterval = null;
+        let themeModeMediaQuery = null;
+        let themeModeMediaQueryListener = null;
+
+        // ========== THEME (Light/Dark/System) ==========
+        function applyThemeMode(mode) {
+            const prefersDark = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const resolved = (mode === 'system') ? (prefersDark() ? 'dark' : 'light') : mode;
+            document.documentElement.setAttribute('data-theme', resolved);
+        }
+
+        function setThemeMode(mode) {
+            localStorage.setItem('ui:themeMode', mode);
+            applyThemeMode(mode);
+        }
+
+        function initTheme() {
+            const saved = localStorage.getItem('ui:themeMode') || 'system';
+            const select = document.getElementById('themeSelect');
+            if (select) select.value = saved;
+
+            // Cleanup old listener (if any)
+            if (themeModeMediaQuery && themeModeMediaQueryListener) {
+                try { themeModeMediaQuery.removeEventListener('change', themeModeMediaQueryListener); } catch (_) {}
+            }
+
+            themeModeMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+            themeModeMediaQueryListener = () => {
+                const mode = localStorage.getItem('ui:themeMode') || 'system';
+                if (mode === 'system') applyThemeMode(mode);
+            };
+            if (themeModeMediaQuery && themeModeMediaQuery.addEventListener) {
+                themeModeMediaQuery.addEventListener('change', themeModeMediaQueryListener);
+            }
+
+            applyThemeMode(saved);
+        }
         
         for (let i = 0; i < MAX_SCHEDULES; i++) {
             currentState.schedules.push({
@@ -2086,6 +2339,15 @@
             `;
             
             document.getElementById('weatherContent').innerHTML = html;
+            
+            // Update header if card is collapsed
+            const weatherCard = document.getElementById('weatherCard');
+            if (weatherCard) {
+                const weatherContent = weatherCard.querySelector('.card-content');
+                if (weatherContent && weatherContent.classList.contains('collapsed')) {
+                    updateWeatherCardHeader(true);
+                }
+            }
         }
         
         function displayWeatherError() {
@@ -2500,8 +2762,15 @@
             document.getElementById('schedulePumpStatus').textContent = currentState.pump ? 'EIN' : 'AUS';
             document.getElementById('statTempOn').textContent = currentState.tempOn + '°C';
             document.getElementById('statTempOff').textContent = currentState.tempOff + '°C';
-            document.getElementById('tempOn').value = currentState.tempOn;
-            document.getElementById('tempOff').value = currentState.tempOff;
+            // Don't overwrite user edits while typing / until saved (status refresh calls updateUI frequently)
+            const tempOnEl = document.getElementById('tempOn');
+            const tempOffEl = document.getElementById('tempOff');
+            if (tempOnEl && !tempOnEl.dataset.userEditing && !tempOnEl.dataset.userDirty && document.activeElement !== tempOnEl) {
+                tempOnEl.value = currentState.tempOn;
+            }
+            if (tempOffEl && !tempOffEl.dataset.userEditing && !tempOffEl.dataset.userDirty && document.activeElement !== tempOffEl) {
+                tempOffEl.value = currentState.tempOff;
+            }
             
             // Schedule list
             updateScheduleList();
@@ -2521,6 +2790,15 @@
             // Statistics
             document.getElementById('todaySwitches').textContent = currentState.todaySwitches + 'x';
             document.getElementById('totalSwitches').textContent = currentState.switchCount + 'x';
+            
+            // Update statistics card header if collapsed
+            const statisticsCard = document.getElementById('statisticsCard');
+            if (statisticsCard) {
+                const statisticsContent = statisticsCard.querySelector('.card-content');
+                if (statisticsContent && statisticsContent.classList.contains('collapsed')) {
+                    updateStatisticsCardHeader(true);
+                }
+            }
             document.getElementById('onTimeValue').textContent = formatUptime(currentState.onTimeSeconds);
             document.getElementById('offTimeValue').textContent = formatUptime(currentState.offTimeSeconds);
             
@@ -2893,6 +3171,11 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
                         body: JSON.stringify({ tempOn, tempOff, schedules: currentState.schedules })
                     });
+                    // Clear "dirty" flags after successful save so values can refresh from backend again.
+                    const tempOnEl = document.getElementById('tempOn');
+                    const tempOffEl = document.getElementById('tempOff');
+                    if (tempOnEl) { delete tempOnEl.dataset.userDirty; delete tempOnEl.dataset.userEditing; }
+                    if (tempOffEl) { delete tempOffEl.dataset.userDirty; delete tempOffEl.dataset.userEditing; }
                     showToast('Einstellungen gespeichert', 'success');
                 } catch (e) {
                     showToast('Fehler beim Speichern', 'error');
@@ -2978,6 +3261,35 @@
             tankHeightEl.addEventListener('blur', () => clearEditing(tankHeightEl));
             tankCapacityEl.addEventListener('blur', () => clearEditing(tankCapacityEl));
         })();
+
+        // Prevent auto temperature inputs from being reset by periodic status updates while user is typing.
+        (function setupAutoTempInputGuards() {
+            const tempOnEl = document.getElementById('tempOn');
+            const tempOffEl = document.getElementById('tempOff');
+            if (!tempOnEl || !tempOffEl) return;
+
+            const markEditing = (el) => { el.dataset.userEditing = '1'; };
+            const clearEditing = (el) => { delete el.dataset.userEditing; };
+            const markDirty = (el) => { el.dataset.userDirty = '1'; };
+
+            tempOnEl.addEventListener('input', () => {
+                markEditing(tempOnEl);
+                markDirty(tempOnEl);
+                const v = parseFloat(tempOnEl.value);
+                if (!Number.isNaN(v)) currentState.tempOn = v;
+            });
+            tempOffEl.addEventListener('input', () => {
+                markEditing(tempOffEl);
+                markDirty(tempOffEl);
+                const v = parseFloat(tempOffEl.value);
+                if (!Number.isNaN(v)) currentState.tempOff = v;
+            });
+
+            tempOnEl.addEventListener('focus', () => markEditing(tempOnEl));
+            tempOffEl.addEventListener('focus', () => markEditing(tempOffEl));
+            tempOnEl.addEventListener('blur', () => clearEditing(tempOnEl));
+            tempOffEl.addEventListener('blur', () => clearEditing(tempOffEl));
+        })();
         
         function simulateSensorError() {
             if (!isLocalMode) return;
@@ -3015,6 +3327,7 @@
         let wsReconnectTimer = null;
         let waitingForReboot = false; // Flag to indicate we're waiting for ESP32 to reboot after OTA
         let rebootCheckInterval = null; // Interval for checking WebSocket reconnection after reboot
+        let reloadTriggered = false; // Flag to prevent multiple page reloads
         let reconnectAttempts = 0; // Counter for reconnection attempts
         let isConnecting = false; // Prevent multiple simultaneous connection attempts
         const MAX_RECONNECT_DELAY = 30000; // Maximum delay: 30 seconds
@@ -3076,6 +3389,7 @@
                     // Wait for "=== Setup complete ===" message to ensure ESP32 is fully ready
                     // This message comes via WebSocket after all initialization is done
                     let setupCompleteReceived = false;
+                    let setupCompleteTimeout = null;
                     const originalOnMessage = ws.onmessage;
                     ws.onmessage = (event) => {
                         // Call original handler
@@ -3084,35 +3398,55 @@
                         }
                         
                         // Check if setup is complete
-                        if (waitingForReboot && !setupCompleteReceived) {
+                        if (waitingForReboot && !setupCompleteReceived && !reloadTriggered) {
                             const message = event.data;
                             if (message.includes('=== Setup complete ===') || message.includes('Setup complete')) {
                                 setupCompleteReceived = true;
                                 waitingForReboot = false;
+                                
+                                // Cancel fallback timeout
+                                if (setupCompleteTimeout) {
+                                    clearTimeout(setupCompleteTimeout);
+                                    setupCompleteTimeout = null;
+                                }
+                                
                                 console.log('ESP32 setup complete, closing modal and reloading page...');
+                                hideRebootOverlay();
                                 // Close modal if open
                                 closeOtaModal();
+                                
+                                // Prevent multiple reloads
+                                if (!reloadTriggered) {
+                                    reloadTriggered = true;
+                                    showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
+                                    setTimeout(() => {
+                                        location.reload();
+                                    }, 1000);
+                                }
+                            }
+                        }
+                    };
+                    
+                    // Fallback: If no "Setup complete" message received within 8 seconds, reload anyway
+                    setupCompleteTimeout = setTimeout(() => {
+                        if (waitingForReboot && !setupCompleteReceived && !reloadTriggered) {
+                            console.log('Timeout waiting for setup complete, closing modal and reloading anyway...');
+                            setupCompleteReceived = true;
+                            waitingForReboot = false;
+                            hideRebootOverlay();
+                            // Close modal if open
+                            closeOtaModal();
+                            
+                            // Prevent multiple reloads
+                            if (!reloadTriggered) {
+                                reloadTriggered = true;
                                 showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
                                 setTimeout(() => {
                                     location.reload();
                                 }, 1000);
                             }
                         }
-                    };
-                    
-                    // Fallback: If no "Setup complete" message received within 5 seconds, reload anyway
-                    setTimeout(() => {
-                        if (waitingForReboot && !setupCompleteReceived) {
-                            console.log('Timeout waiting for setup complete, closing modal and reloading anyway...');
-                            waitingForReboot = false;
-                            // Close modal if open
-                            closeOtaModal();
-                            showToast('ESP32 ist wieder online! Lade Seite neu...', 'success', 3000);
-                            setTimeout(() => {
-                                location.reload();
-                            }, 1000);
-                        }
-                    }, 5000);
+                    }, 8000);
                 }
             };
             
@@ -3205,6 +3539,180 @@
             document.getElementById('serialMonitor').innerHTML = '<div style="color: #608b4e;">// Log gelöscht</div>';
         }
         
+        // ========== REBOOT/UPDATE OVERLAY ==========
+        function showRebootOverlay(title, sub) {
+            const overlay = document.getElementById('rebootOverlay');
+            if (!overlay) return;
+            const titleEl = document.getElementById('rebootOverlayTitle');
+            const subEl = document.getElementById('rebootOverlaySub');
+            if (titleEl && title) titleEl.textContent = title;
+            if (subEl && sub) subEl.innerHTML = sub;
+            overlay.classList.add('active');
+        }
+
+        function hideRebootOverlay() {
+            const overlay = document.getElementById('rebootOverlay');
+            if (!overlay) return;
+            overlay.classList.remove('active');
+        }
+
+        // ========== STATS MODAL ==========
+        function openStatsModal(event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            const modal = document.getElementById('statsModal');
+            if (!modal) return;
+            modal.classList.add('active');
+            refreshStatsModal();
+        }
+
+        function closeStatsModal() {
+            const modal = document.getElementById('statsModal');
+            if (!modal) return;
+            modal.classList.remove('active');
+        }
+
+        function formatSecondsHMS(seconds) {
+            const s = Math.max(0, Number(seconds) || 0);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            return `${h}h ${m}m`;
+        }
+
+        function formatDateKey(dateKey) {
+            const s = String(dateKey || '');
+            if (s.length !== 8) return s || '-';
+            return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+        }
+
+        async function refreshStatsModal() {
+            if (isLocalMode) {
+                showToast('⚠️ Demo-Modus: Statistik-History ist nur auf dem ESP32 verfügbar', 'warning', 3000);
+                return;
+            }
+            try {
+                const res = await fetch('/api/stats-history');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                window.__lastStatsHistory = data;
+                renderStatsModal(data);
+            } catch (e) {
+                console.error('stats-history failed:', e);
+                showToast('Fehler beim Laden der Statistik-History', 'error');
+            }
+        }
+
+        function renderStatsModal(data) {
+            const summaryEl = document.getElementById('statsModalSummary');
+            const tbody = document.getElementById('statsModalTableBody');
+            if (!summaryEl || !tbody) return;
+
+            const rangeSelect = document.getElementById('statsRangeSelect');
+            const rangeDays = rangeSelect ? parseInt(rangeSelect.value, 10) : 14;
+
+            const totalSwitches = data.switchCount ?? currentState.switchCount ?? 0;
+            const onSec = data.onTimeSeconds ?? currentState.onTimeSeconds ?? 0;
+            const offSec = data.offTimeSeconds ?? currentState.offTimeSeconds ?? 0;
+
+            // Build rows array: today first, then history
+            const rows = [];
+            if (data.today && data.today.dateKey) rows.push({ ...data.today, _today: true });
+            if (Array.isArray(data.days)) {
+                for (const d of data.days) rows.push(d);
+            }
+
+            // Weekly aggregation over selected range (today + last N-1 days)
+            const slice = rows.slice(0, Math.max(1, Math.min(rangeDays, 14)));
+            const agg = {
+                switches: 0,
+                onSeconds: 0,
+                offSeconds: 0,
+                samples: 0,
+                sumVorlauf10: 0,
+                sumRuecklauf10: 0,
+                minVorlauf: null,
+                maxVorlauf: null,
+                minRuecklauf: null,
+                maxRuecklauf: null
+            };
+            const updateMinMax = (keyMin, keyMax, v) => {
+                if (v === null || v === undefined || Number.isNaN(Number(v))) return;
+                const n = Number(v);
+                agg[keyMin] = (agg[keyMin] === null) ? n : Math.min(agg[keyMin], n);
+                agg[keyMax] = (agg[keyMax] === null) ? n : Math.max(agg[keyMax], n);
+            };
+            for (const r of slice) {
+                agg.switches += Number(r.switches || 0);
+                agg.onSeconds += Number(r.onSeconds || 0);
+                agg.offSeconds += Number(r.offSeconds || 0);
+                const s = Number(r.samples || 0);
+                if (s > 0) {
+                    agg.samples += s;
+                    agg.sumVorlauf10 += Number(r.sumVorlauf10 || 0);
+                    agg.sumRuecklauf10 += Number(r.sumRuecklauf10 || 0);
+                }
+                updateMinMax('minVorlauf', 'maxVorlauf', r.minVorlauf);
+                updateMinMax('minVorlauf', 'maxVorlauf', r.maxVorlauf);
+                updateMinMax('minRuecklauf', 'maxRuecklauf', r.minRuecklauf);
+                updateMinMax('minRuecklauf', 'maxRuecklauf', r.maxRuecklauf);
+            }
+
+            const avgVorlauf = (agg.samples > 0) ? (agg.sumVorlauf10 / (10 * agg.samples)) : null;
+            const avgRuecklauf = (agg.samples > 0) ? (agg.sumRuecklauf10 / (10 * agg.samples)) : null;
+
+            const weeklyLabel = (rangeDays === 7) ? '7 Tage' : '14 Tage';
+            summaryEl.innerHTML = `
+                <div style="border:1px solid var(--border); border-radius:10px; padding:10px; background: rgba(255,255,255,0.04);">
+                    <div style="font-size:11px; color: var(--muted);">Gesamt Schaltungen</div>
+                    <div style="font-size:18px; font-weight:800; color: var(--text);">${totalSwitches}x</div>
+                </div>
+                <div style="border:1px solid var(--border); border-radius:10px; padding:10px; background: rgba(255,255,255,0.04);">
+                    <div style="font-size:11px; color: var(--muted);">Heizung ON Gesamt</div>
+                    <div style="font-size:18px; font-weight:800; color: var(--text);">${formatSecondsHMS(onSec)}</div>
+                </div>
+                <div style="border:1px solid var(--border); border-radius:10px; padding:10px; background: rgba(255,255,255,0.04);">
+                    <div style="font-size:11px; color: var(--muted);">Heizung OFF Gesamt</div>
+                    <div style="font-size:18px; font-weight:800; color: var(--text);">${formatSecondsHMS(offSec)}</div>
+                </div>
+                <div style="grid-column: 1 / -1; border:1px solid var(--border); border-radius:10px; padding:10px; background: rgba(255,255,255,0.04);">
+                    <div style="display:flex; justify-content: space-between; gap: 10px; align-items: baseline;">
+                        <div style="font-size:11px; color: var(--muted);">Übersicht (${weeklyLabel})</div>
+                        <div style="font-size:11px; color: var(--muted);">Samples: ${agg.samples}</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px;">
+                        <div><div style="font-size:11px; color: var(--muted);">Schaltungen</div><div style="font-weight:800; color: var(--text);">${agg.switches}x</div></div>
+                        <div><div style="font-size:11px; color: var(--muted);">Heizung ON</div><div style="font-weight:800; color: var(--text);">${formatSecondsHMS(agg.onSeconds)}</div></div>
+                        <div><div style="font-size:11px; color: var(--muted);">Ø Vorlauf</div><div style="font-weight:800; color: var(--text);">${avgVorlauf === null ? '—' : avgVorlauf.toFixed(1) + '°C'}</div></div>
+                        <div><div style="font-size:11px; color: var(--muted);">Ø Rücklauf</div><div style="font-weight:800; color: var(--text);">${avgRuecklauf === null ? '—' : avgRuecklauf.toFixed(1) + '°C'}</div></div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;">
+                        <div style="font-size:12px; color: var(--text);">
+                            Vorlauf Min/Max: <b>${agg.minVorlauf === null ? '—' : agg.minVorlauf.toFixed(1) + '°C'}</b> / <b>${agg.maxVorlauf === null ? '—' : agg.maxVorlauf.toFixed(1) + '°C'}</b>
+                        </div>
+                        <div style="font-size:12px; color: var(--text);">
+                            Rücklauf Min/Max: <b>${agg.minRuecklauf === null ? '—' : agg.minRuecklauf.toFixed(1) + '°C'}</b> / <b>${agg.maxRuecklauf === null ? '—' : agg.maxRuecklauf.toFixed(1) + '°C'}</b>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            tbody.innerHTML = rows.slice(0, Math.max(1, Math.min(rangeDays, 14))).map((r) => {
+                const date = formatDateKey(r.dateKey);
+                const sw = (r.switches ?? 0) + (r._today ? ' (heute)' : '');
+                const on = formatSecondsHMS(r.onSeconds ?? 0);
+                const av = (r.avgVorlauf === null || r.avgVorlauf === undefined) ? '—' : `${Number(r.avgVorlauf).toFixed(1)}°C`;
+                const ar = (r.avgRuecklauf === null || r.avgRuecklauf === undefined) ? '—' : `${Number(r.avgRuecklauf).toFixed(1)}°C`;
+                return `
+                    <tr style="border-bottom: 1px solid var(--border);">
+                        <td style="padding: 8px 6px; color: var(--text); font-variant-numeric: tabular-nums;">${date}</td>
+                        <td style="padding: 8px 6px; color: var(--text);">${sw}</td>
+                        <td style="padding: 8px 6px; color: var(--text);">${on}</td>
+                        <td style="padding: 8px 6px; color: var(--text);">${av}</td>
+                        <td style="padding: 8px 6px; color: var(--text);">${ar}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
         // ========== COLLAPSIBLE CARDS (persisted in localStorage) ==========
         function initCollapsibleCards() {
             const STORAGE_PREFIX = 'ui:cardCollapse:';
@@ -3223,10 +3731,17 @@
                 .replace(/[^a-z0-9_äöüß-]/g, '')
                 .slice(0, 60);
 
-            const setCollapsed = (content, arrow, collapsed) => {
+            const setCollapsed = (content, arrow, collapsed, cardId) => {
                 content.classList.toggle('collapsed', collapsed);
                 content.classList.toggle('expanded', !collapsed);
                 if (arrow) arrow.classList.toggle('expanded', !collapsed);
+                
+                // Special handling for weather and statistics cards
+                if (cardId === 'weatherCard') {
+                    updateWeatherCardHeader(collapsed);
+                } else if (cardId === 'statisticsCard') {
+                    updateStatisticsCardHeader(collapsed);
+                }
             };
 
             const getStorageKey = (card, titleText, index) => {
@@ -3289,15 +3804,76 @@
                 const defaultCollapsed = (card.dataset.collapseDefault === 'collapsed') || content.classList.contains('collapsed');
                 const collapsed = stored ? (stored === 'collapsed') : defaultCollapsed;
 
-                setCollapsed(content, arrow, collapsed);
+                setCollapsed(content, arrow, collapsed, card.id || null);
 
                 header.addEventListener('click', (e) => {
                     if (isInteractiveHeaderClick(e.target)) return;
                     const nowCollapsed = !content.classList.contains('collapsed');
-                    setCollapsed(content, arrow, nowCollapsed);
+                    setCollapsed(content, arrow, nowCollapsed, card.id || null);
                     localStorage.setItem(storageKey, nowCollapsed ? 'collapsed' : 'expanded');
                 });
             });
+            
+            // Initial update for weather and statistics cards
+            const weatherCard = document.getElementById('weatherCard');
+            const statisticsCard = document.getElementById('statisticsCard');
+            if (weatherCard) {
+                const weatherContent = weatherCard.querySelector('.card-content');
+                if (weatherContent) {
+                    updateWeatherCardHeader(weatherContent.classList.contains('collapsed'));
+                }
+            }
+            if (statisticsCard) {
+                const statisticsContent = statisticsCard.querySelector('.card-content');
+                if (statisticsContent) {
+                    updateStatisticsCardHeader(statisticsContent.classList.contains('collapsed'));
+                }
+            }
+        }
+        
+        // Update weather card header based on collapsed state
+        function updateWeatherCardHeader(collapsed) {
+            const titleEl = document.getElementById('weatherTitle');
+            const locationEl = document.getElementById('weatherLocation');
+            if (!titleEl) return;
+            
+            if (collapsed) {
+                // Show weather icon + temperature when collapsed
+                if (currentState.weather && currentState.weather.valid && currentState.weather.temperature !== undefined) {
+                    const w = currentState.weather;
+                    const currentInfo = getWeatherInfo(w.weatherCode);
+                    const temp = Math.round(w.temperature);
+                    titleEl.textContent = `${currentInfo.icon} ${temp}°C`;
+                    titleEl.style.fontSize = '14px';
+                    if (locationEl) locationEl.style.display = 'none';
+                } else {
+                    titleEl.textContent = '🌤️ -';
+                    titleEl.style.fontSize = '14px';
+                    if (locationEl) locationEl.style.display = 'none';
+                }
+            } else {
+                // Show "🌤️ Wetter" when expanded
+                titleEl.textContent = '🌤️ Wetter';
+                titleEl.style.fontSize = '';
+                if (locationEl) locationEl.style.display = '';
+            }
+        }
+        
+        // Update statistics card header based on collapsed state
+        function updateStatisticsCardHeader(collapsed) {
+            const titleEl = document.getElementById('statisticsTitle');
+            if (!titleEl) return;
+            
+            if (collapsed) {
+                // Show "Heute: X Schaltungen" when collapsed
+                const todaySwitches = currentState.todaySwitches || 0;
+                titleEl.textContent = `Heute: ${todaySwitches}x`;
+                titleEl.style.fontSize = '14px';
+            } else {
+                // Show "Statistik" when expanded
+                titleEl.textContent = 'Statistik';
+                titleEl.style.fontSize = '';
+            }
         }
         
         // ========== FILE TYPE VALIDATION ==========
@@ -3403,21 +3979,24 @@
         
         // Close modal on overlay click and ESC key
         function initModalHandlers() {
-            const modal = document.getElementById('otaModal');
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === modal) {
-                        closeOtaModal();
-                    }
+            const otaModal = document.getElementById('otaModal');
+            const statsModal = document.getElementById('statsModal');
+
+            const wireOverlayClose = (modalEl, closeFn) => {
+                if (!modalEl) return;
+                modalEl.addEventListener('click', function(e) {
+                    if (e.target === modalEl) closeFn();
                 });
-                
-                // Close modal on ESC key
+            };
+
+            wireOverlayClose(otaModal, closeOtaModal);
+            wireOverlayClose(statsModal, closeStatsModal);
+
                 document.addEventListener('keydown', function(e) {
-                    if (e.key === 'Escape' && modal.classList.contains('active')) {
-                        closeOtaModal();
-                    }
-                });
-            }
+                if (e.key !== 'Escape') return;
+                if (otaModal && otaModal.classList.contains('active')) closeOtaModal();
+                if (statsModal && statsModal.classList.contains('active')) closeStatsModal();
+            });
         }
         
         // Initialize modal handlers when DOM is ready
@@ -3494,6 +4073,8 @@
                                     
                                     // Set flag and wait for WebSocket to reconnect
                                     waitingForReboot = true;
+                                    reloadTriggered = false; // Reset reload flag
+                                    showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                                     
                                     // Clear any existing reconnect timer
                                     if (wsReconnectTimer) {
@@ -3504,6 +4085,7 @@
                                     // Clear any existing reboot check interval
                                     if (rebootCheckInterval) {
                                         clearInterval(rebootCheckInterval);
+                                        rebootCheckInterval = null;
                                     }
                                     
                                     // Close current WebSocket
@@ -3513,8 +4095,8 @@
                                         ws = null;
                                     }
                                     
-                                    // ESP32 waits 3 seconds before reboot, then needs ~15-20 seconds for full boot
-                                    // Timeline: Upload complete → 3s wait → reboot → boot sequence → WebSocket ready (~18-23s total)
+                                    // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                                    // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
                                     setTimeout(() => {
                                         // Start checking for WebSocket reconnection every 2 seconds
                                         rebootCheckInterval = setInterval(() => {
@@ -3530,7 +4112,7 @@
                                                 connectWebSocket();
                                             }
                                         }, 2000);
-                                    }, 8000); // Start trying after 8s (3s delay + 5s for reboot to complete)
+                                    }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                                 }
                             }, 500);
                         }
@@ -3547,22 +4129,46 @@
                         
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
+                        reloadTriggered = false; // Reset reload flag
+                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                         
-                        // Close current WebSocket so it will reconnect when ESP32 is back
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.close();
+                        // Clear any existing reconnect timer
+                        if (wsReconnectTimer) {
+                            clearTimeout(wsReconnectTimer);
+                            wsReconnectTimer = null;
                         }
                         
-                        // Start checking for WebSocket reconnection
-                        const checkInterval = setInterval(() => {
-                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
-                                clearInterval(checkInterval);
-                            }
-                            // Auto-reconnect attempt
-                            if (ws && ws.readyState === WebSocket.CLOSED) {
-                                connectWebSocket();
-                            }
-                        }, 1000);
+                        // Clear any existing reboot check interval
+                        if (rebootCheckInterval) {
+                            clearInterval(rebootCheckInterval);
+                            rebootCheckInterval = null;
+                        }
+                        
+                        // Close current WebSocket
+                        if (ws) {
+                            ws.onclose = null; // Prevent normal reconnect handler
+                            ws.close();
+                            ws = null;
+                        }
+                        
+                        // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                        // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                        setTimeout(() => {
+                            // Start checking for WebSocket reconnection every 2 seconds
+                            rebootCheckInterval = setInterval(() => {
+                                if (!waitingForReboot) {
+                                    clearInterval(rebootCheckInterval);
+                                    rebootCheckInterval = null;
+                                    return;
+                                }
+                                
+                                // Try to reconnect
+                                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                    console.log('Attempting WebSocket reconnect after reboot...');
+                                    connectWebSocket();
+                                }
+                            }, 2000);
+                        }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
                     }
@@ -3579,6 +4185,7 @@
                             
                             // Set flag and wait for WebSocket to reconnect
                             waitingForReboot = true;
+                            showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                             
                             // Close current WebSocket so it will reconnect when ESP32 is back
                             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -3608,22 +4215,46 @@
                         
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
+                        reloadTriggered = false; // Reset reload flag
+                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                         
-                        // Close current WebSocket so it will reconnect when ESP32 is back
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.close();
+                        // Clear any existing reconnect timer
+                        if (wsReconnectTimer) {
+                            clearTimeout(wsReconnectTimer);
+                            wsReconnectTimer = null;
                         }
                         
-                        // Start checking for WebSocket reconnection
-                        const checkInterval = setInterval(() => {
-                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
-                                clearInterval(checkInterval);
-                            }
-                            // Auto-reconnect attempt
-                            if (ws && ws.readyState === WebSocket.CLOSED) {
-                                connectWebSocket();
-                            }
-                        }, 1000);
+                        // Clear any existing reboot check interval
+                        if (rebootCheckInterval) {
+                            clearInterval(rebootCheckInterval);
+                            rebootCheckInterval = null;
+                        }
+                        
+                        // Close current WebSocket
+                        if (ws) {
+                            ws.onclose = null; // Prevent normal reconnect handler
+                            ws.close();
+                            ws = null;
+                        }
+                        
+                        // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                        // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                        setTimeout(() => {
+                            // Start checking for WebSocket reconnection every 2 seconds
+                            rebootCheckInterval = setInterval(() => {
+                                if (!waitingForReboot) {
+                                    clearInterval(rebootCheckInterval);
+                                    rebootCheckInterval = null;
+                                    return;
+                                }
+                                
+                                // Try to reconnect
+                                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                    console.log('Attempting WebSocket reconnect after reboot...');
+                                    connectWebSocket();
+                                }
+                            }, 2000);
+                        }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                     }
                 });
                 
@@ -3635,6 +4266,7 @@
                         statusText.style.color = '#27ae60';
                         showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         waitingForReboot = true;
+                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             ws.close();
                         }
@@ -3724,6 +4356,8 @@
                                     
                                     // Set flag and wait for WebSocket to reconnect
                                     waitingForReboot = true;
+                                    reloadTriggered = false; // Reset reload flag
+                                    showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                                     
                                     // Clear any existing reconnect timer
                                     if (wsReconnectTimer) {
@@ -3734,6 +4368,7 @@
                                     // Clear any existing reboot check interval
                                     if (rebootCheckInterval) {
                                         clearInterval(rebootCheckInterval);
+                                        rebootCheckInterval = null;
                                     }
                                     
                                     // Close current WebSocket
@@ -3743,8 +4378,8 @@
                                         ws = null;
                                     }
                                     
-                                    // ESP32 waits 3 seconds before reboot, then needs ~15-20 seconds for full boot
-                                    // Timeline: Upload complete → 3s wait → reboot → boot sequence → WebSocket ready (~18-23s total)
+                                    // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                                    // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
                                     setTimeout(() => {
                                         // Start checking for WebSocket reconnection every 2 seconds
                                         rebootCheckInterval = setInterval(() => {
@@ -3760,7 +4395,7 @@
                                                 connectWebSocket();
                                             }
                                         }, 2000);
-                                    }, 8000); // Start trying after 8s (3s delay + 5s for reboot to complete)
+                                    }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                                 }
                             }, 500);
                         }
@@ -3777,22 +4412,46 @@
                         
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
+                        reloadTriggered = false; // Reset reload flag
+                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                         
-                        // Close current WebSocket so it will reconnect when ESP32 is back
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.close();
+                        // Clear any existing reconnect timer
+                        if (wsReconnectTimer) {
+                            clearTimeout(wsReconnectTimer);
+                            wsReconnectTimer = null;
                         }
                         
-                        // Start checking for WebSocket reconnection
-                        const checkInterval = setInterval(() => {
-                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
-                                clearInterval(checkInterval);
-                            }
-                            // Auto-reconnect attempt
-                            if (ws && ws.readyState === WebSocket.CLOSED) {
-                                connectWebSocket();
-                            }
-                        }, 1000);
+                        // Clear any existing reboot check interval
+                        if (rebootCheckInterval) {
+                            clearInterval(rebootCheckInterval);
+                            rebootCheckInterval = null;
+                        }
+                        
+                        // Close current WebSocket
+                        if (ws) {
+                            ws.onclose = null; // Prevent normal reconnect handler
+                            ws.close();
+                            ws = null;
+                        }
+                        
+                        // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                        // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                        setTimeout(() => {
+                            // Start checking for WebSocket reconnection every 2 seconds
+                            rebootCheckInterval = setInterval(() => {
+                                if (!waitingForReboot) {
+                                    clearInterval(rebootCheckInterval);
+                                    rebootCheckInterval = null;
+                                    return;
+                                }
+                                
+                                // Try to reconnect
+                                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                    console.log('Attempting WebSocket reconnect after reboot...');
+                                    connectWebSocket();
+                                }
+                            }, 2000);
+                        }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                     } else {
                         throw new Error('Upload fehlgeschlagen: ' + xhr.statusText);
                     }
@@ -3809,22 +4468,46 @@
                             
                             // Set flag and wait for WebSocket to reconnect
                             waitingForReboot = true;
+                            reloadTriggered = false; // Reset reload flag
+                            showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                             
-                            // Close current WebSocket so it will reconnect when ESP32 is back
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                ws.close();
+                            // Clear any existing reconnect timer
+                            if (wsReconnectTimer) {
+                                clearTimeout(wsReconnectTimer);
+                                wsReconnectTimer = null;
                             }
                             
-                            // Start checking for WebSocket reconnection
-                            const checkInterval = setInterval(() => {
-                                if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
-                                    clearInterval(checkInterval);
-                                }
-                                // Auto-reconnect attempt
-                                if (ws && ws.readyState === WebSocket.CLOSED) {
-                                    connectWebSocket();
-                                }
-                            }, 1000);
+                            // Clear any existing reboot check interval
+                            if (rebootCheckInterval) {
+                                clearInterval(rebootCheckInterval);
+                                rebootCheckInterval = null;
+                            }
+                            
+                            // Close current WebSocket
+                            if (ws) {
+                                ws.onclose = null; // Prevent normal reconnect handler
+                                ws.close();
+                                ws = null;
+                            }
+                            
+                            // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                            // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                            setTimeout(() => {
+                                // Start checking for WebSocket reconnection every 2 seconds
+                                rebootCheckInterval = setInterval(() => {
+                                    if (!waitingForReboot) {
+                                        clearInterval(rebootCheckInterval);
+                                        rebootCheckInterval = null;
+                                        return;
+                                    }
+                                    
+                                    // Try to reconnect
+                                    if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                        console.log('Attempting WebSocket reconnect after reboot...');
+                                        connectWebSocket();
+                                    }
+                                }, 2000);
+                            }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                         }
                     }
                 });
@@ -3838,22 +4521,46 @@
                         
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
+                        reloadTriggered = false; // Reset reload flag
+                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
                         
-                        // Close current WebSocket so it will reconnect when ESP32 is back
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.close();
+                        // Clear any existing reconnect timer
+                        if (wsReconnectTimer) {
+                            clearTimeout(wsReconnectTimer);
+                            wsReconnectTimer = null;
                         }
                         
-                        // Start checking for WebSocket reconnection
-                        const checkInterval = setInterval(() => {
-                            if (ws && ws.readyState === WebSocket.OPEN && !waitingForReboot) {
-                                clearInterval(checkInterval);
-                            }
-                            // Auto-reconnect attempt
-                            if (ws && ws.readyState === WebSocket.CLOSED) {
-                                connectWebSocket();
-                            }
-                        }, 1000);
+                        // Clear any existing reboot check interval
+                        if (rebootCheckInterval) {
+                            clearInterval(rebootCheckInterval);
+                            rebootCheckInterval = null;
+                        }
+                        
+                        // Close current WebSocket
+                        if (ws) {
+                            ws.onclose = null; // Prevent normal reconnect handler
+                            ws.close();
+                            ws = null;
+                        }
+                        
+                        // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                        // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                        setTimeout(() => {
+                            // Start checking for WebSocket reconnection every 2 seconds
+                            rebootCheckInterval = setInterval(() => {
+                                if (!waitingForReboot) {
+                                    clearInterval(rebootCheckInterval);
+                                    rebootCheckInterval = null;
+                                    return;
+                                }
+                                
+                                // Try to reconnect
+                                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                    console.log('Attempting WebSocket reconnect after reboot...');
+                                    connectWebSocket();
+                                }
+                            }, 2000);
+                        }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                     }
                 });
                 
@@ -3865,9 +4572,46 @@
                         statusText.style.color = '#27ae60';
                         showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         waitingForReboot = true;
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.close();
+                        reloadTriggered = false; // Reset reload flag
+                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        
+                        // Clear any existing reconnect timer
+                        if (wsReconnectTimer) {
+                            clearTimeout(wsReconnectTimer);
+                            wsReconnectTimer = null;
                         }
+                        
+                        // Clear any existing reboot check interval
+                        if (rebootCheckInterval) {
+                            clearInterval(rebootCheckInterval);
+                            rebootCheckInterval = null;
+                        }
+                        
+                        // Close current WebSocket
+                        if (ws) {
+                            ws.onclose = null; // Prevent normal reconnect handler
+                            ws.close();
+                            ws = null;
+                        }
+                        
+                        // ESP32 waits 8 seconds before reboot, then needs ~15-20 seconds for full boot
+                        // Timeline: Upload complete → 8s wait → reboot → boot sequence → WebSocket ready (~23-28s total)
+                        setTimeout(() => {
+                            // Start checking for WebSocket reconnection every 2 seconds
+                            rebootCheckInterval = setInterval(() => {
+                                if (!waitingForReboot) {
+                                    clearInterval(rebootCheckInterval);
+                                    rebootCheckInterval = null;
+                                    return;
+                                }
+                                
+                                // Try to reconnect
+                                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                                    console.log('Attempting WebSocket reconnect after reboot...');
+                                    connectWebSocket();
+                                }
+                            }, 2000);
+                        }, 10000); // Start trying after 10s (8s delay + 2s buffer)
                         return;
                     }
                     throw new Error('Netzwerkfehler beim Upload');
@@ -3889,10 +4633,14 @@
         }
         
         // ========== INITIALIZATION ==========
+        initTheme();
         initCollapsibleCards();
         setInterval(() => { 
             if (!isLocalMode) {
+                // During OTA reboot we expect the backend to be unreachable. Don't spam console with failed requests.
+                if (!waitingForReboot) {
                 updateStatus();
+                }
                 
                 // Weather is only updated on page load and F5 refresh, not in loop
             }
