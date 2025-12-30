@@ -1554,6 +1554,16 @@ void setupWebServer() {
         request->send(LittleFS, "/sw.js", "application/javascript");
     });
     
+    // Serve CSS file
+    server.on("/assets/css/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(LittleFS, "/assets/css/style.css", "text/css");
+    });
+    
+    // Serve JS file
+    server.on("/assets/js/script.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(LittleFS, "/assets/js/script.js", "application/javascript");
+    });
+    
     // API: Get current status
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         // NOTE: This payload includes nested arrays/objects (schedules) and optional data.
@@ -2529,8 +2539,42 @@ void setupWebServer() {
         request->send(200, "application/json", "{\"success\":true,\"message\":\"Testnachricht gesendet\"}");
     });
     
+    // Handle 404 - try to serve static files from LittleFS
     server.onNotFound([](AsyncWebServerRequest *request) {
-        request->send(404, "text/plain", "Not found");
+        String path = request->url();
+        
+        // Skip API routes
+        if (path.startsWith("/api/")) {
+            request->send(404, "text/plain", "Not found");
+            return;
+        }
+        
+        // Determine content type based on file extension
+        String contentType = "text/plain";
+        if (path.endsWith(".css")) {
+            contentType = "text/css";
+        } else if (path.endsWith(".js")) {
+            contentType = "application/javascript";
+        } else if (path.endsWith(".json")) {
+            contentType = "application/json";
+        } else if (path.endsWith(".png")) {
+            contentType = "image/png";
+        } else if (path.endsWith(".jpg") || path.endsWith(".jpeg")) {
+            contentType = "image/jpeg";
+        } else if (path.endsWith(".svg")) {
+            contentType = "image/svg+xml";
+        } else if (path.endsWith(".ico")) {
+            contentType = "image/x-icon";
+        } else if (path.endsWith(".html")) {
+            contentType = "text/html";
+        }
+        
+        // Try to serve file from LittleFS
+        if (LittleFS.exists(path)) {
+            request->send(LittleFS, path, contentType);
+        } else {
+            request->send(404, "text/plain", "Not found");
+        }
     });
     
     // Initialize WebSocket for Serial Monitor
