@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heizungssteuerung</title>
+    <title>ESP32 Heizungssteuerung</title>
+    <meta name="description" content="Steuerung für ESP32-basierte Heizungsanlage">
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Heizung">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
@@ -105,6 +111,14 @@
             display: flex;
             align-items: center;
             gap: 16px;
+        }
+        
+        .header-weather-mini {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text);
         }
         
         .current-time {
@@ -457,18 +471,18 @@
         
         .mode-button {
             padding: 10px;
-            border: 2px solid #e1e8ed;
+            border: 2px solid var(--border);
             border-radius: 6px;
-            background: white;
+            background: var(--card-bg);
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
-            color: #7f8c8d;
+            color: var(--text-secondary);
             transition: all 0.2s;
         }
         
         .mode-button:hover {
-            border-color: #3498db;
+            border-color: var(--primary);
         }
         
         .mode-button.active {
@@ -484,14 +498,14 @@
             align-items: center;
             justify-content: space-between;
             padding: 14px;
-            background: #f8f9fa;
+            background: rgba(255, 255, 255, 0.02);
             border-radius: 6px;
         }
         
         .toggle-label {
             font-size: 14px;
             font-weight: 500;
-            color: #2c3e50;
+            color: var(--text);
         }
         
         .toggle-switch {
@@ -684,7 +698,7 @@
             display: flex;
             justify-content: space-between;
             padding: 10px 0;
-            border-bottom: 1px solid #ecf0f1;
+            border-bottom: 1px solid var(--border);
         }
         
         .stat-row:last-child {
@@ -693,13 +707,13 @@
         
         .stat-label {
             font-size: 13px;
-            color: #7f8c8d;
+            color: var(--text-secondary);
         }
         
         .stat-value {
             font-size: 13px;
             font-weight: 600;
-            color: #2c3e50;
+            color: var(--text);
         }
         
         /* Demo Controls */
@@ -1213,6 +1227,20 @@
             .card-header:has(+ .card-content.collapsed) .card-title {
                 font-size: 13px;
             }
+            
+            /* Kompakte Statistik-Box auf Mobile */
+            #statisticsContent > div[style*="grid-template-columns"] {
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+            }
+            
+            #statisticsContent > div[style*="grid-template-columns"] > div {
+                padding: 10px !important;
+            }
+            
+            #statisticsContent > div[style*="grid-template-columns"] > div > div:last-child {
+                font-size: 18px !important;
+            }
         }
         
         /* Mobile: Hide subtitle when collapsed for better space usage */
@@ -1243,59 +1271,100 @@
     
     <!-- OTA Update Modal -->
     <div class="modal-overlay" id="otaModal">
-        <div class="modal">
+        <div class="modal" style="max-width: 700px;">
             <div class="modal-header">
-                <div class="modal-title">🔧 OTA Update</div>
+                <div class="modal-title">
+                    <i class="fas fa-cloud-upload-alt" style="margin-right: 8px;"></i>
+                    OTA Update
+                </div>
                 <button class="modal-close" onclick="closeOtaModal()">×</button>
             </div>
             
-            <!-- Firmware Update Section -->
-            <div class="modal-section">
-                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #3498db;">
-                    🔧 Firmware Update (C++ Code)
-                </div>
-                <div class="info-box" style="margin-bottom: 12px; font-size: 12px;">
-                    <strong>Backend-Logik:</strong> Nutze <code>pio run</code>, dann <code>firmware.bin</code> hochladen.
-                </div>
-                
-                <form id="otaForm" onsubmit="uploadFirmware(event)" style="display: flex; flex-direction: column; gap: 12px;">
-                    <input type="file" id="firmwareFile" accept=".bin" required style="padding: 8px; border: 2px dashed #3498db; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                    
-                    <button type="submit" class="btn btn-primary" id="uploadBtn">
-                        📤 Firmware hochladen
-                    </button>
-                </form>
-                
-                <div id="uploadProgress" style="display: none; margin-top: 12px;">
-                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
-                        <div id="uploadProgressBar" style="background: linear-gradient(90deg, #27ae60, #2ecc71); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+            <div style="padding: 20px;">
+                <!-- Firmware Update Section -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(52, 152, 219, 0.15); display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-microchip" style="color: #3498db; font-size: 18px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 15px; font-weight: 600; color: var(--text);">Firmware Update</div>
+                            <div style="font-size: 12px; color: var(--muted);">C++ Backend-Code</div>
+                        </div>
                     </div>
-                    <div id="uploadStatus" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
-                </div>
-            </div>
-            
-            <!-- Frontend Update Section -->
-            <div class="modal-section">
-                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #9b59b6;">
-                    🎨 Frontend Update (HTML/CSS/JS)
-                </div>
-                <div class="info-box" style="margin-bottom: 12px; font-size: 12px;">
-                    <strong>Dashboard:</strong> Nutze <code>pio run -t buildfs</code>, dann <code>littlefs.bin</code> hochladen.
-                </div>
-                
-                <form id="otaFormFS" onsubmit="uploadFrontend(event)" style="display: flex; flex-direction: column; gap: 12px;">
-                    <input type="file" id="frontendFile" accept=".bin" required style="padding: 8px; border: 2px dashed #9b59b6; border-radius: 6px; cursor: pointer; font-size: 13px;">
                     
-                    <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                        📤 Frontend hochladen
-                    </button>
-                </form>
-                
-                <div id="uploadProgressFS" style="display: none; margin-top: 12px;">
-                    <div style="background: #ecf0f1; border-radius: 8px; height: 24px; overflow: hidden; position: relative;">
-                        <div id="uploadProgressBarFS" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;"></div>
+                    <div style="background: rgba(255,255,255,0.02); border-left: 3px solid #3498db; padding: 10px 12px; margin-bottom: 16px; border-radius: 4px; font-size: 12px; color: var(--muted);">
+                        <i class="fas fa-info-circle" style="margin-right: 6px; color: #3498db;"></i>
+                        Nutze <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">pio run</code>, dann <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">firmware.bin</code> hochladen.
                     </div>
-                    <div id="uploadStatusFS" style="text-align: center; margin-top: 8px; font-size: 13px; color: #7f8c8d;"></div>
+                    
+                    <form id="otaForm" onsubmit="uploadFirmware(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                        <label style="position: relative; cursor: pointer;">
+                            <input type="file" id="firmwareFile" accept=".bin" required style="position: absolute; opacity: 0; width: 0; height: 0;">
+                            <div id="firmwareFileLabel" style="padding: 16px; border: 2px dashed var(--border); border-radius: 8px; text-align: center; background: rgba(255,255,255,0.02); transition: all 0.2s; color: var(--muted); font-size: 13px;">
+                                <i class="fas fa-file-upload" style="margin-right: 8px;"></i>
+                                <span id="firmwareFileName">Datei auswählen</span>
+                            </div>
+                        </label>
+                        
+                        <button type="submit" class="btn btn-primary" id="uploadBtn" style="width: 100%;">
+                            <i class="fas fa-upload" style="margin-right: 8px;"></i>
+                            Firmware hochladen
+                        </button>
+                    </form>
+                    
+                    <div id="uploadProgress" style="display: none; margin-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div id="uploadStatus" style="font-size: 12px; color: var(--muted);"></div>
+                            <div id="uploadProgressPercent" style="font-size: 12px; font-weight: 600; color: var(--text);">0%</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 8px; height: 12px; overflow: hidden; position: relative;">
+                            <div id="uploadProgressBar" style="background: #3498db; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Frontend Update Section -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(155, 89, 182, 0.15); display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-code" style="color: #9b59b6; font-size: 18px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 15px; font-weight: 600; color: var(--text);">Frontend Update</div>
+                            <div style="font-size: 12px; color: var(--muted);">HTML/CSS/JavaScript</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: rgba(255,255,255,0.02); border-left: 3px solid #9b59b6; padding: 10px 12px; margin-bottom: 16px; border-radius: 4px; font-size: 12px; color: var(--muted);">
+                        <i class="fas fa-info-circle" style="margin-right: 6px; color: #9b59b6;"></i>
+                        Nutze <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">pio run -t buildfs</code>, dann <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">littlefs.bin</code> hochladen.
+                    </div>
+                    
+                    <form id="otaFormFS" onsubmit="uploadFrontend(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                        <label style="position: relative; cursor: pointer;">
+                            <input type="file" id="frontendFile" accept=".bin" required style="position: absolute; opacity: 0; width: 0; height: 0;">
+                            <div id="frontendFileLabel" style="padding: 16px; border: 2px dashed var(--border); border-radius: 8px; text-align: center; background: rgba(255,255,255,0.02); transition: all 0.2s; color: var(--muted); font-size: 13px;">
+                                <i class="fas fa-file-upload" style="margin-right: 8px;"></i>
+                                <span id="frontendFileName">Datei auswählen</span>
+                            </div>
+                        </label>
+                        
+                        <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="width: 100%;">
+                            <i class="fas fa-upload" style="margin-right: 8px;"></i>
+                            Frontend hochladen
+                        </button>
+                    </form>
+                    
+                    <div id="uploadProgressFS" style="display: none; margin-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div id="uploadStatusFS" style="font-size: 12px; color: var(--muted);"></div>
+                            <div id="uploadProgressPercentFS" style="font-size: 12px; font-weight: 600; color: var(--text);">0%</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 8px; height: 12px; overflow: hidden; position: relative;">
+                            <div id="uploadProgressBarFS" style="background: #9b59b6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1315,8 +1384,8 @@
 
             <div id="statsModalSummary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;"></div>
 
-            <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
-                <div style="font-weight: 700; color: var(--text);">Letzte Tage</div>
+            <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 10px; margin-top: 14px;">
+                <div style="font-weight: 700; color: var(--text);">Übersicht</div>
                 <div style="display:flex; align-items:center; gap: 8px;">
                     <select id="statsRangeSelect" class="setting-input" style="max-width: 130px; font-size: 12px;" onchange="renderStatsModal(window.__lastStatsHistory || {})">
                         <option value="7">7 Tage</option>
@@ -1326,20 +1395,9 @@
                 </div>
             </div>
 
-            <div id="statsModalTableWrap" style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                    <thead>
-                        <tr style="text-align:left; border-bottom: 1px solid var(--border); color: var(--muted);">
-                            <th style="padding: 8px 6px;">Datum</th>
-                            <th style="padding: 8px 6px;">Schaltungen</th>
-                            <th style="padding: 8px 6px;">Heizung ON</th>
-                            <th style="padding: 8px 6px;">Ø Vorlauf</th>
-                            <th style="padding: 8px 6px;">Ø Rücklauf</th>
-                        </tr>
-                    </thead>
-                    <tbody id="statsModalTableBody"></tbody>
-                </table>
-            </div>
+            <div id="statsModalDaysList" style="margin-top: 14px;"></div>
+            
+            <div id="statsModalSwitchEvents" style="margin-top: 20px;"></div>
         </div>
     </div>
     
@@ -1371,6 +1429,10 @@
                     <option value="light">Hell</option>
                     <option value="dark">Dunkel</option>
                 </select>
+            </div>
+            <div class="header-weather-mini" id="headerWeatherMini" style="display: none; font-size: 13px; color: var(--text);">
+                <span id="headerWeatherIcon">🌤️</span>
+                <span id="headerWeatherTemp">--°C</span>
             </div>
             <div class="current-time" id="currentTime">--:--</div>
             <div class="status-indicator">
@@ -1459,7 +1521,7 @@
                 <div id="autoInfo" style="display: none;">
                     <div class="info-box">
                         Automatische Temperaturregelung aktiv
-                        <div style="margin-top: 8px; font-size: 0.9em; color: #7f8c8d;">
+                        <div style="margin-top: 8px; font-size: 0.9em; color: var(--text-secondary);">
                             Heizung: <span id="autoHeatingStatus">AUS</span> | Pumpe: <span id="autoPumpStatus">AUS</span>
                         </div>
                     </div>
@@ -1468,13 +1530,13 @@
                 <div id="scheduleInfo" style="display: none;">
                     <div class="info-box">
                         Zeitplansteuerung aktiv
-                        <div style="margin-top: 8px; font-size: 0.9em; color: #7f8c8d;">
+                        <div style="margin-top: 8px; font-size: 0.9em; color: var(--text-secondary);">
                             Heizung: <span id="scheduleHeatingStatus">AUS</span> | Pumpe: <span id="schedulePumpStatus">AUS</span>
                         </div>
                     </div>
                 </div>
                 
-                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ecf0f1;">
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
                     <div class="toggle-control" style="margin-bottom: 12px;">
                         <div class="toggle-label">Frostschutz aktiv</div>
                         <label class="toggle-switch">
@@ -1690,6 +1752,15 @@
                             </div>
                         </div>
                         
+                        <div class="setting-item">
+                            <label class="setting-label">Dieselverbrauch</label>
+                            <div class="input-with-unit">
+                                <input type="number" class="setting-input" id="dieselConsumptionPerHour" value="2.0" min="0.1" max="20" step="0.1" onchange="saveTankConfig()">
+                                <span class="input-unit">L/h</span>
+                            </div>
+                            <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Verbrauch pro Stunde bei laufender Heizung</div>
+                        </div>
+                        
                         <div class="info-box" style="font-size: 11px;">
                             Sensor misst Abstand von oben zur Flüssigkeit. Konfiguriere Tankhöhe und Kapazität für korrekte Anzeige.
                         </div>
@@ -1700,6 +1771,49 @@
                     <div style="font-size: 48px; color: #95a5a6; margin-bottom: 12px;">⚠️</div>
                     <div style="font-size: 16px; font-weight: 600; color: #7f8c8d; margin-bottom: 8px;">Sensor nicht verfügbar</div>
                     <div style="font-size: 13px; color: #95a5a6;">JSN-SR04T nicht erkannt oder nicht angeschlossen</div>
+                </div>
+            </div>
+            
+            <!-- Behavior Warning -->
+            <div class="card" id="behaviorWarningCard" style="display: none;">
+                <div class="card-header" style="border-bottom: 2px solid #e74c3c;">
+                    <div class="card-title" style="color: #e74c3c;">
+                        <i class="fas fa-exclamation-triangle"></i> Warnung: Ungewöhnliches Verhalten
+                    </div>
+                </div>
+                <div style="padding: 16px;">
+                    <div class="info-box warning" style="background: rgba(231, 76, 60, 0.1); border-color: #e74c3c;">
+                        <strong>Zu häufiges Schalten erkannt!</strong><br>
+                        Die Heizung hat in den letzten 15 Minuten mehr als 10 Mal geschaltet. Dies könnte auf ein Problem hinweisen (z.B. defekter Thermostat, falsche Einstellungen, Sensoren-Fehler).<br><br>
+                        <strong>Bitte prüfen:</strong>
+                        <ul style="margin: 8px 0 0 20px; padding: 0;">
+                            <li>Temperatursensoren funktionieren korrekt?</li>
+                            <li>Hysterese-Einstellungen (EIN/AUS-Temperaturen) sinnvoll?</li>
+                            <li>Thermostat oder Regler defekt?</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Backup & Restore -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💾 Backup & Restore</div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button class="btn btn-secondary" onclick="exportSettings()" style="width: 100%;">
+                        <i class="fas fa-download"></i> Einstellungen exportieren
+                    </button>
+                    
+                    <label class="btn btn-secondary" style="width: 100%; cursor: pointer; text-align: center;">
+                        <i class="fas fa-upload"></i> Einstellungen importieren
+                        <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importSettings(event)">
+                    </label>
+                    
+                    <div class="info-box" style="font-size: 12px; margin-top: 8px;">
+                        <i class="fas fa-info-circle"></i> Exportiert alle Einstellungen (Modus, Temperaturen, Zeitpläne, Relais-Konfiguration) als JSON-Datei. Import überschreibt aktuelle Einstellungen.
+                    </div>
                 </div>
             </div>
             
@@ -1723,7 +1837,8 @@
                         🔥 Heizung EIN/AUS<br>
                         ⚠️ Sensor-Fehler<br>
                         🪫 Tank niedrig (&lt; 20%)<br>
-                        ✅ Sensoren wieder OK
+                        ✅ Sensoren wieder OK<br>
+                        ⚠️ Ungewöhnliches Verhalten (zu häufiges Schalten)
                     </div>
                 </div>
             </div>
@@ -1735,25 +1850,33 @@
                         <i class="fas fa-chevron-right collapse-arrow" id="statisticsArrow"></i>
                         <span id="statisticsTitle">Statistik</span>
                     </div>
-                    <button class="btn btn-secondary" onclick="openStatsModal(event)" style="font-size: 12px; padding: 6px 10px;">Details</button>
                 </div>
                 
                 <div class="card-content collapsed" id="statisticsContent">
-                    <div class="stat-row">
-                        <span class="stat-label">Heute geschaltet</span>
-                        <span class="stat-value" id="todaySwitches">0x</span>
+                    <!-- Kompakte Statistik-Übersicht -->
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px;">
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Heute</div>
+                            <div style="font-size: 20px; font-weight: 700; color: var(--text);" id="todaySwitchesCompact">0x</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Gesamt</div>
+                            <div style="font-size: 20px; font-weight: 700; color: var(--text);" id="totalSwitchesCompact">0x</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Heizung ON</div>
+                            <div style="font-size: 16px; font-weight: 600; color: var(--text);" id="onTimeCompact">0h 0m</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Heizung OFF</div>
+                            <div style="font-size: 16px; font-weight: 600; color: var(--text);" id="offTimeCompact">0h 0m</div>
+                        </div>
                     </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Gesamt geschaltet</span>
-                        <span class="stat-value" id="totalSwitches">0x</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Laufzeit (ON)</span>
-                        <span class="stat-value" id="onTimeValue">0h 0m</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Aus-Zeit (OFF)</span>
-                        <span class="stat-value" id="offTimeValue">0h 0m</span>
+                    
+                    <div style="margin-top: 16px;">
+                        <button class="btn btn-secondary" onclick="openStatsModal(event)" style="width: 100%; font-size: 12px; padding: 8px;">
+                            <i class="fas fa-chart-bar"></i> Detaillierte Statistiken anzeigen
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1830,6 +1953,7 @@
             todaySwitches: 0,
             onTimeSeconds: 0,
             offTimeSeconds: 0,
+            behaviorWarning: false,
             frostEnabled: false,
             frostTemp: 8,
             tankAvailable: false,
@@ -1925,6 +2049,7 @@
                 currentState.tankPercent = 65;
                 currentState.tankHeight = 100;
                 currentState.tankCapacity = 1000;
+                currentState.dieselConsumptionPerHour = 2.0;
                 
                 // Initialize with default weather demo data (Köln)
                 currentState.weather = {
@@ -2200,6 +2325,7 @@
                     tankPercent: data.tankPercent,
                     tankHeight: data.tankHeight || 100,
                     tankCapacity: data.tankCapacity || 1000,
+                    dieselConsumptionPerHour: data.dieselConsumptionPerHour !== undefined ? Math.round(data.dieselConsumptionPerHour * 10) / 10 : 2.0,
                     latitude: data.latitude || 50.952149,
                     longitude: data.longitude || 7.1229,
                     locationName: data.locationName || null,
@@ -2254,6 +2380,14 @@
                 
                 if (data.valid) {
                     displayWeather();
+                    // Also update header if weather card is collapsed
+                    const weatherCard = document.getElementById('weatherCard');
+                    if (weatherCard) {
+                        const weatherContent = weatherCard.querySelector('.card-content');
+                        if (weatherContent && weatherContent.classList.contains('collapsed')) {
+                            updateWeatherCardHeader(true);
+                        }
+                    }
                     return true; // Return true if weather data is valid
                 } else {
                     // Check if we should show error or loading message
@@ -2287,9 +2421,22 @@
             const forecastInfo = getWeatherInfo(w.tomorrow.weatherCode);
             
             // Update location name in header and settings info
+            // BUT: Don't overwrite title if weather card is collapsed (it shows icon+temp)
+            const weatherCardEl = document.getElementById('weatherCard');
+            const weatherContent = weatherCardEl ? weatherCardEl.querySelector('.card-content') : null;
+            const isCollapsed = weatherContent && weatherContent.classList.contains('collapsed');
+            
             if (w.locationName) {
-                document.getElementById('weatherLocation').textContent = w.locationName;
+                const locationEl = document.getElementById('weatherLocation');
+                if (locationEl && !isCollapsed) {
+                    locationEl.textContent = w.locationName;
+                }
                 document.getElementById('currentLocationName').textContent = w.locationName;
+            }
+            
+            // If collapsed, update header to show icon+temp
+            if (isCollapsed) {
+                updateWeatherCardHeader(true);
             }
             
             // Helper: Format temperature (round to integer)
@@ -2340,11 +2487,11 @@
             
             document.getElementById('weatherContent').innerHTML = html;
             
-            // Update header if card is collapsed
-            const weatherCard = document.getElementById('weatherCard');
-            if (weatherCard) {
-                const weatherContent = weatherCard.querySelector('.card-content');
-                if (weatherContent && weatherContent.classList.contains('collapsed')) {
+            // Always update header if card is collapsed (to show weather in header)
+            // weatherCardEl is already declared above, so reuse it
+            if (weatherCardEl) {
+                const weatherContentCheck = weatherCardEl.querySelector('.card-content');
+                if (weatherContentCheck && weatherContentCheck.classList.contains('collapsed')) {
                     updateWeatherCardHeader(true);
                 }
             }
@@ -2670,6 +2817,106 @@
         }
         
         // Send Telegram test message
+        // ========== BACKUP & RESTORE ==========
+        function exportSettings() {
+            try {
+                const exportData = {
+                    version: '1.0',
+                    exportedAt: new Date().toISOString(),
+                    settings: {
+                        mode: currentState.mode,
+                        tempOn: currentState.tempOn,
+                        tempOff: currentState.tempOff,
+                        frostEnabled: currentState.frostEnabled,
+                        frostTemp: currentState.frostTemp,
+                        schedules: currentState.schedules || [],
+                        heaterRelayActiveLow: currentState.heaterRelayActiveLow,
+                        pumpRelayActiveLow: currentState.pumpRelayActiveLow,
+                        heaterRelayOffMode: currentState.heaterRelayOffMode,
+                        pumpRelayOffMode: currentState.pumpRelayOffMode,
+                        tankHeight: currentState.tankHeight,
+                        tankCapacity: currentState.tankCapacity,
+                        dieselConsumptionPerHour: currentState.dieselConsumptionPerHour
+                    }
+                };
+                
+                const jsonStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `heizungssteuerung-backup-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showToast('✅ Einstellungen exportiert', 'success', 2000);
+            } catch (error) {
+                console.error('Export error:', error);
+                showToast('Fehler beim Exportieren der Einstellungen', 'error');
+            }
+        }
+        
+        async function importSettings(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (isLocalMode) {
+                showToast('⚠️ Import nur im Live-Modus verfügbar', 'warning');
+                return;
+            }
+            
+            try {
+                const text = await file.text();
+                const importData = JSON.parse(text);
+                
+                if (!importData.settings) {
+                    throw new Error('Ungültiges Backup-Format');
+                }
+                
+                // Confirm import
+                if (!confirm('Einstellungen importieren? Dies überschreibt alle aktuellen Einstellungen.')) {
+                    event.target.value = '';
+                    return;
+                }
+                
+                const settings = importData.settings;
+                
+                // Update current state
+                if (settings.mode) currentState.mode = settings.mode;
+                if (settings.tempOn !== undefined) currentState.tempOn = settings.tempOn;
+                if (settings.tempOff !== undefined) currentState.tempOff = settings.tempOff;
+                if (settings.frostEnabled !== undefined) currentState.frostEnabled = settings.frostEnabled;
+                if (settings.frostTemp !== undefined) currentState.frostTemp = settings.frostTemp;
+                if (settings.schedules) currentState.schedules = settings.schedules;
+                if (settings.heaterRelayActiveLow !== undefined) currentState.heaterRelayActiveLow = settings.heaterRelayActiveLow;
+                if (settings.pumpRelayActiveLow !== undefined) currentState.pumpRelayActiveLow = settings.pumpRelayActiveLow;
+                if (settings.heaterRelayOffMode !== undefined) currentState.heaterRelayOffMode = settings.heaterRelayOffMode;
+                if (settings.pumpRelayOffMode !== undefined) currentState.pumpRelayOffMode = settings.pumpRelayOffMode;
+                if (settings.tankHeight !== undefined) currentState.tankHeight = settings.tankHeight;
+                if (settings.tankCapacity !== undefined) currentState.tankCapacity = settings.tankCapacity;
+                if (settings.dieselConsumptionPerHour !== undefined) currentState.dieselConsumptionPerHour = settings.dieselConsumptionPerHour;
+                
+                // Save to ESP32
+                await saveSettings();
+                
+                // Clear file input
+                event.target.value = '';
+                
+                showToast('✅ Einstellungen importiert und gespeichert', 'success', 3000);
+                
+                // Reload UI
+                setTimeout(() => {
+                    updateUI();
+                }, 500);
+            } catch (error) {
+                console.error('Import error:', error);
+                showToast('Fehler beim Importieren: ' + error.message, 'error');
+                event.target.value = '';
+            }
+        }
+        
         async function sendTelegramTest() {
             if (isLocalMode) {
                 showToast('⚠️ Telegram-Test nur im Live-Modus verfügbar', 'warning');
@@ -2787,9 +3034,61 @@
                 document.getElementById('efficiencyBar').style.width = '0%';
             }
             
-            // Statistics
-            document.getElementById('todaySwitches').textContent = currentState.todaySwitches + 'x';
-            document.getElementById('totalSwitches').textContent = currentState.switchCount + 'x';
+            // Update compact statistics
+            const todaySwitchesCompact = document.getElementById('todaySwitchesCompact');
+            const totalSwitchesCompact = document.getElementById('totalSwitchesCompact');
+            const onTimeCompact = document.getElementById('onTimeCompact');
+            const offTimeCompact = document.getElementById('offTimeCompact');
+            if (todaySwitchesCompact) todaySwitchesCompact.textContent = currentState.todaySwitches + 'x';
+            if (totalSwitchesCompact) totalSwitchesCompact.textContent = currentState.switchCount + 'x';
+            if (onTimeCompact) onTimeCompact.textContent = formatUptime(currentState.onTimeSeconds);
+            if (offTimeCompact) offTimeCompact.textContent = formatUptime(currentState.offTimeSeconds);
+            
+            // Behavior warning
+            const behaviorWarningCard = document.getElementById('behaviorWarningCard');
+            if (behaviorWarningCard) {
+                behaviorWarningCard.style.display = currentState.behaviorWarning ? 'block' : 'none';
+                if (currentState.behaviorWarning && !window.lastBehaviorWarningState) {
+                    showBrowserNotification('⚠️ Ungewöhnliches Verhalten', 'Zu häufiges Schalten erkannt - bitte prüfen!');
+                    window.lastBehaviorWarningState = true;
+                } else if (!currentState.behaviorWarning) {
+                    window.lastBehaviorWarningState = false;
+                }
+            }
+            
+            // Heater ON/OFF notifications
+            if (window.lastHeatingState !== undefined && window.lastHeatingState !== currentState.heating) {
+                if (currentState.heating) {
+                    showBrowserNotification('🔥 Heizung EIN', 'Die Heizung wurde eingeschaltet');
+                } else {
+                    showBrowserNotification('❄️ Heizung AUS', 'Die Heizung wurde ausgeschaltet');
+                }
+            }
+            window.lastHeatingState = currentState.heating;
+            
+            // Sensor error notifications
+            const hasSensorError = (currentState.tempVorlauf === null || currentState.tempVorlauf === undefined) || 
+                                   (currentState.tempRuecklauf === null || currentState.tempRuecklauf === undefined);
+            if (window.lastSensorErrorState === undefined) window.lastSensorErrorState = false;
+            if (hasSensorError && !window.lastSensorErrorState) {
+                showBrowserNotification('⚠️ Sensor-Fehler', 'Beide Temperatursensoren ausgefallen');
+                window.lastSensorErrorState = true;
+            } else if (!hasSensorError && window.lastSensorErrorState) {
+                showBrowserNotification('✅ Sensoren wieder OK', 'Temperatursensoren funktionieren wieder');
+                window.lastSensorErrorState = false;
+            }
+            
+            // Tank low notifications
+            if (currentState.tankAvailable && currentState.tankPercent !== null && currentState.tankPercent !== undefined) {
+                const isTankLow = currentState.tankPercent < 20;
+                if (window.lastTankLowState === undefined) window.lastTankLowState = false;
+                if (isTankLow && !window.lastTankLowState) {
+                    showBrowserNotification('🪫 Tank niedrig', `Füllstand: ${currentState.tankPercent}% (< 20%) - Bitte nachfüllen!`);
+                    window.lastTankLowState = true;
+                } else if (!isTankLow && window.lastTankLowState) {
+                    window.lastTankLowState = false;
+                }
+            }
             
             // Update statistics card header if collapsed
             const statisticsCard = document.getElementById('statisticsCard');
@@ -2799,8 +3098,6 @@
                     updateStatisticsCardHeader(true);
                 }
             }
-            document.getElementById('onTimeValue').textContent = formatUptime(currentState.onTimeSeconds);
-            document.getElementById('offTimeValue').textContent = formatUptime(currentState.offTimeSeconds);
             
             // Frost protection
             document.getElementById('frostEnabled').checked = currentState.frostEnabled;
@@ -2823,11 +3120,16 @@
             // Don't overwrite user edits while typing (status refresh calls updateUI frequently)
             const tankHeightEl = document.getElementById('tankHeight');
             const tankCapacityEl = document.getElementById('tankCapacity');
+            const dieselPerHourEl = document.getElementById('dieselConsumptionPerHour');
             if (tankHeightEl && !tankHeightEl.dataset.userEditing && document.activeElement !== tankHeightEl) {
                 tankHeightEl.value = currentState.tankHeight;
             }
             if (tankCapacityEl && !tankCapacityEl.dataset.userEditing && document.activeElement !== tankCapacityEl) {
                 tankCapacityEl.value = currentState.tankCapacity;
+            }
+            if (dieselPerHourEl && !dieselPerHourEl.dataset.userEditing && document.activeElement !== dieselPerHourEl) {
+                const value = currentState.dieselConsumptionPerHour || 2.0;
+                dieselPerHourEl.value = Math.round(value * 10) / 10; // Round to 1 decimal place
             }
             
             if (currentState.tankAvailable) {
@@ -3214,16 +3516,18 @@
         async function saveTankConfig() {
             const height = parseFloat(document.getElementById('tankHeight').value);
             const capacity = parseFloat(document.getElementById('tankCapacity').value);
+            const dieselPerHour = Math.round(parseFloat(document.getElementById('dieselConsumptionPerHour').value) * 10) / 10; // Round to 1 decimal place
             
             currentState.tankHeight = height;
             currentState.tankCapacity = capacity;
+            currentState.dieselConsumptionPerHour = dieselPerHour;
             
             if (!isLocalMode) {
                 try {
                     await fetch('/api/settings', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:admin') },
-                        body: JSON.stringify({ tankHeight: height, tankCapacity: capacity })
+                        body: JSON.stringify({ tankHeight: height, tankCapacity: capacity, dieselConsumptionPerHour: dieselPerHour })
                     });
                     showToast('Tank-Konfiguration gespeichert', 'success');
                 } catch (e) {
@@ -3255,6 +3559,16 @@
                 const v = parseFloat(tankCapacityEl.value);
                 if (!Number.isNaN(v)) currentState.tankCapacity = v;
             });
+            const dieselPerHourEl = document.getElementById('dieselConsumptionPerHour');
+            if (dieselPerHourEl) {
+                dieselPerHourEl.addEventListener('input', () => {
+                    markEditing(dieselPerHourEl);
+                    const v = parseFloat(dieselPerHourEl.value);
+                    if (!Number.isNaN(v)) currentState.dieselConsumptionPerHour = Math.round(v * 10) / 10; // Round to 1 decimal place
+                });
+                dieselPerHourEl.addEventListener('focus', () => markEditing(dieselPerHourEl));
+                dieselPerHourEl.addEventListener('blur', () => clearEditing(dieselPerHourEl));
+            }
 
             tankHeightEl.addEventListener('focus', () => markEditing(tankHeightEl));
             tankCapacityEl.addEventListener('focus', () => markEditing(tankCapacityEl));
@@ -3328,6 +3642,7 @@
         let waitingForReboot = false; // Flag to indicate we're waiting for ESP32 to reboot after OTA
         let rebootCheckInterval = null; // Interval for checking WebSocket reconnection after reboot
         let reloadTriggered = false; // Flag to prevent multiple page reloads
+        let overlayShown = false; // Flag to prevent showing reboot overlay multiple times
         let reconnectAttempts = 0; // Counter for reconnection attempts
         let isConnecting = false; // Prevent multiple simultaneous connection attempts
         const MAX_RECONNECT_DELAY = 30000; // Maximum delay: 30 seconds
@@ -3541,6 +3856,10 @@
         
         // ========== REBOOT/UPDATE OVERLAY ==========
         function showRebootOverlay(title, sub) {
+            // Prevent showing overlay multiple times
+            if (overlayShown) return;
+            overlayShown = true;
+            
             const overlay = document.getElementById('rebootOverlay');
             if (!overlay) return;
             const titleEl = document.getElementById('rebootOverlayTitle');
@@ -3551,6 +3870,7 @@
         }
 
         function hideRebootOverlay() {
+            overlayShown = false; // Reset flag when hiding
             const overlay = document.getElementById('rebootOverlay');
             if (!overlay) return;
             overlay.classList.remove('active');
@@ -3581,7 +3901,8 @@
         function formatDateKey(dateKey) {
             const s = String(dateKey || '');
             if (s.length !== 8) return s || '-';
-            return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+            // German format: DD.MM.YYYY
+            return `${s.slice(6,8)}.${s.slice(4,6)}.${s.slice(0,4)}`;
         }
 
         async function refreshStatsModal() {
@@ -3603,8 +3924,7 @@
 
         function renderStatsModal(data) {
             const summaryEl = document.getElementById('statsModalSummary');
-            const tbody = document.getElementById('statsModalTableBody');
-            if (!summaryEl || !tbody) return;
+            if (!summaryEl) return;
 
             const rangeSelect = document.getElementById('statsRangeSelect');
             const rangeDays = rangeSelect ? parseInt(rangeSelect.value, 10) : 14;
@@ -3678,9 +3998,10 @@
                         <div style="font-size:11px; color: var(--muted);">Übersicht (${weeklyLabel})</div>
                         <div style="font-size:11px; color: var(--muted);">Samples: ${agg.samples}</div>
                     </div>
-                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px;">
+                    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px;">
                         <div><div style="font-size:11px; color: var(--muted);">Schaltungen</div><div style="font-weight:800; color: var(--text);">${agg.switches}x</div></div>
                         <div><div style="font-size:11px; color: var(--muted);">Heizung ON</div><div style="font-weight:800; color: var(--text);">${formatSecondsHMS(agg.onSeconds)}</div></div>
+                        <div><div style="font-size:11px; color: var(--muted);">Diesel</div><div style="font-weight:800; color: var(--text);">${((agg.onSeconds / 3600.0) * (currentState.dieselConsumptionPerHour || 2.0)).toFixed(1)}L</div></div>
                         <div><div style="font-size:11px; color: var(--muted);">Ø Vorlauf</div><div style="font-weight:800; color: var(--text);">${avgVorlauf === null ? '—' : avgVorlauf.toFixed(1) + '°C'}</div></div>
                         <div><div style="font-size:11px; color: var(--muted);">Ø Rücklauf</div><div style="font-weight:800; color: var(--text);">${avgRuecklauf === null ? '—' : avgRuecklauf.toFixed(1) + '°C'}</div></div>
                     </div>
@@ -3695,22 +4016,235 @@
                 </div>
             `;
 
-            tbody.innerHTML = rows.slice(0, Math.max(1, Math.min(rangeDays, 14))).map((r) => {
-                const date = formatDateKey(r.dateKey);
-                const sw = (r.switches ?? 0) + (r._today ? ' (heute)' : '');
-                const on = formatSecondsHMS(r.onSeconds ?? 0);
-                const av = (r.avgVorlauf === null || r.avgVorlauf === undefined) ? '—' : `${Number(r.avgVorlauf).toFixed(1)}°C`;
-                const ar = (r.avgRuecklauf === null || r.avgRuecklauf === undefined) ? '—' : `${Number(r.avgRuecklauf).toFixed(1)}°C`;
-                return `
-                    <tr style="border-bottom: 1px solid var(--border);">
-                        <td style="padding: 8px 6px; color: var(--text); font-variant-numeric: tabular-nums;">${date}</td>
-                        <td style="padding: 8px 6px; color: var(--text);">${sw}</td>
-                        <td style="padding: 8px 6px; color: var(--text);">${on}</td>
-                        <td style="padding: 8px 6px; color: var(--text);">${av}</td>
-                        <td style="padding: 8px 6px; color: var(--text);">${ar}</td>
-                    </tr>
-                `;
-            }).join('');
+            // Render daily values as cards
+            const daysListEl = document.getElementById('statsModalDaysList');
+            if (daysListEl) {
+                const displayRows = rows.slice(0, Math.max(1, Math.min(rangeDays, 14)));
+                if (displayRows.length > 0) {
+                    daysListEl.innerHTML = `
+                        <div style="font-weight: 700; color: var(--text); margin-bottom: 10px;">Tageswerte</div>
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                            ${displayRows.map((r) => {
+                                const date = formatDateKey(r.dateKey);
+                                const sw = r.switches ?? 0;
+                                const on = formatSecondsHMS(r.onSeconds ?? 0);
+                                const av = (r.avgVorlauf === null || r.avgVorlauf === undefined) ? '—' : `${Number(r.avgVorlauf).toFixed(1)}°C`;
+                                const ar = (r.avgRuecklauf === null || r.avgRuecklauf === undefined) ? '—' : `${Number(r.avgRuecklauf).toFixed(1)}°C`;
+                                const todayLabel = r._today ? ' <span style="font-size: 10px; color: var(--muted);">(heute)</span>' : '';
+                                return `
+                                    <div style="border:1px solid var(--border); border-radius:8px; padding:10px; background: rgba(255,255,255,0.04);">
+                                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <div style="font-weight: 600; color: var(--text);">${date}${todayLabel}</div>
+                                            <div style="font-size: 12px; color: var(--text);">${sw}x</div>
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px;">
+                                            <div>
+                                                <div style="color: var(--muted);">ON Zeit</div>
+                                                <div style="color: var(--text); font-weight: 600;">${on}</div>
+                                            </div>
+                                            <div>
+                                                <div style="color: var(--muted);">Diesel</div>
+                                                <div style="color: var(--text); font-weight: 600;">${(r.dieselLiters !== null && r.dieselLiters !== undefined) ? Number(r.dieselLiters).toFixed(1) + 'L' : '—'}</div>
+                                            </div>
+                                            <div>
+                                                <div style="color: var(--muted);">Ø Vorlauf</div>
+                                                <div style="color: var(--text); font-weight: 600;">${av}</div>
+                                            </div>
+                                            <div>
+                                                <div style="color: var(--muted);">Ø Rücklauf</div>
+                                                <div style="color: var(--text); font-weight: 600;">${ar}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                } else {
+                    daysListEl.innerHTML = '';
+                }
+            }
+            
+            // Render heating periods (ON -> OFF cycles)
+            const eventsEl = document.getElementById('statsModalSwitchEvents');
+            if (eventsEl) {
+                // Check if we have switch events
+                if (!Array.isArray(data.switchEvents) || data.switchEvents.length === 0) {
+                    eventsEl.innerHTML = '<div style="color: var(--muted); text-align: center; padding: 10px;">Keine Heizungsperioden vorhanden.<br><span style="font-size: 10px;">Switch-Events werden automatisch gespeichert, wenn die Heizung ein- und ausgeschaltet wird.</span></div>';
+                } else {
+                    // Sort events chronologically (oldest first)
+                    const sortedEvents = [...data.switchEvents].sort((a, b) => {
+                        if (a.timestamp && b.timestamp) return a.timestamp - b.timestamp;
+                        if (a.uptimeMs && b.uptimeMs) return a.uptimeMs - b.uptimeMs;
+                        return 0;
+                    });
+                    
+                    // Group events into periods (ON -> OFF)
+                    const periods = [];
+                    let currentPeriod = null;
+                    
+                    for (const evt of sortedEvents) {
+                        if (evt.isOn) {
+                            // Start of a new period
+                            if (currentPeriod && currentPeriod.endTime === null) {
+                                // Previous period never ended, skip it
+                            }
+                            currentPeriod = {
+                                startTime: evt.timestamp ? evt.timestamp * 1000 : evt.uptimeMs,
+                                endTime: null,
+                                startTempVorlauf: evt.tempVorlauf,
+                                startTempRuecklauf: evt.tempRuecklauf,
+                                endTempVorlauf: null,
+                                endTempRuecklauf: null,
+                                startTankLiters: evt.tankLiters,
+                                endTankLiters: null,
+                                hasTimestamp: evt.timestamp > 0
+                            };
+                        } else if (currentPeriod && currentPeriod.endTime === null) {
+                            // End of current period
+                            currentPeriod.endTime = evt.timestamp ? evt.timestamp * 1000 : evt.uptimeMs;
+                            currentPeriod.endTempVorlauf = evt.tempVorlauf;
+                            currentPeriod.endTempRuecklauf = evt.tempRuecklauf;
+                            currentPeriod.endTankLiters = evt.tankLiters;
+                            periods.push(currentPeriod);
+                            currentPeriod = null;
+                        }
+                    }
+                    
+                    // If currently ON, add the ongoing period
+                    if (currentPeriod && currentPeriod.endTime === null && currentState.heatingOn) {
+                        const now = Date.now();
+                        currentPeriod.endTime = now;
+                        currentPeriod.endTempVorlauf = currentState.tempVorlauf;
+                        currentPeriod.endTempRuecklauf = currentState.tempRuecklauf;
+                        currentPeriod.endTankLiters = currentState.tankLiters;
+                        periods.push(currentPeriod);
+                    }
+                    
+                    // Sort periods by start time (newest first)
+                    periods.sort((a, b) => b.startTime - a.startTime);
+                    
+                    if (periods.length > 0) {
+                        eventsEl.innerHTML = `
+                        <div style="font-weight: 700; color: var(--text); margin-bottom: 10px;">Heizungsperioden (letzte ${periods.length})</div>
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 400px; overflow-y: auto;">
+                            ${periods.map((period) => {
+                                const startDate = new Date(period.startTime);
+                                const endDate = new Date(period.endTime);
+                                const durationMs = period.endTime - period.startTime;
+                                const durationHours = Math.floor(durationMs / 3600000);
+                                const durationMinutes = Math.floor((durationMs % 3600000) / 60000);
+                                
+                                let startTimeStr = '—';
+                                let endTimeStr = '—';
+                                if (period.hasTimestamp) {
+                                    startTimeStr = startDate.toLocaleString('de-DE', { 
+                                        day: '2-digit', 
+                                        month: '2-digit', 
+                                        hour: '2-digit', 
+                                        minute: '2-digit'
+                                    });
+                                    endTimeStr = endDate.toLocaleString('de-DE', { 
+                                        day: '2-digit', 
+                                        month: '2-digit', 
+                                        hour: '2-digit', 
+                                        minute: '2-digit'
+                                    });
+                                } else {
+                                    const startHours = Math.floor(period.startTime / 3600000);
+                                    const startMins = Math.floor((period.startTime % 3600000) / 60000);
+                                    const endHours = Math.floor(period.endTime / 3600000);
+                                    const endMins = Math.floor((period.endTime % 3600000) / 60000);
+                                    startTimeStr = `Uptime: ${startHours}h ${startMins}m`;
+                                    endTimeStr = `Uptime: ${endHours}h ${endMins}m`;
+                                }
+                                
+                                const durationStr = `${durationHours}h ${durationMinutes}m`;
+                                // Show end temperatures (when heating turned off) as primary values
+                                const endTempV = (period.endTempVorlauf !== null && period.endTempVorlauf !== undefined) 
+                                    ? Number(period.endTempVorlauf).toFixed(1) 
+                                    : (period.startTempVorlauf !== null ? Number(period.startTempVorlauf).toFixed(1) : '—');
+                                const endTempR = (period.endTempRuecklauf !== null && period.endTempRuecklauf !== undefined) 
+                                    ? Number(period.endTempRuecklauf).toFixed(1) 
+                                    : (period.startTempRuecklauf !== null ? Number(period.startTempRuecklauf).toFixed(1) : '—');
+                                
+                                // Calculate diesel consumption
+                                const consumptionPerHour = currentState.dieselConsumptionPerHour || 1.3;
+                                const calculatedConsumption = (durationMs / 3600000.0) * consumptionPerHour;
+                                
+                                // Calculate measured consumption from tank level change (if available)
+                                let measuredConsumption = null;
+                                let consumptionComparison = null;
+                                if (period.startTankLiters !== null && period.startTankLiters !== undefined && 
+                                    period.endTankLiters !== null && period.endTankLiters !== undefined &&
+                                    !isNaN(period.startTankLiters) && !isNaN(period.endTankLiters)) {
+                                    measuredConsumption = Number(period.startTankLiters) - Number(period.endTankLiters);
+                                    if (measuredConsumption > 0) {
+                                        consumptionComparison = ((measuredConsumption - calculatedConsumption) / calculatedConsumption * 100).toFixed(1);
+                                    }
+                                }
+                                
+                                return `
+                                    <div style="border:1px solid var(--border); border-radius:8px; padding:12px; background: rgba(255,255,255,0.04);">
+                                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <div style="font-weight: 600; color: var(--text); font-size: 13px;">🔥 Heizung gelaufen</div>
+                                            <div style="color: var(--muted); font-size: 11px;">${durationStr}</div>
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 11px;">
+                                            <div>
+                                                <div style="color: var(--muted);">Von</div>
+                                                <div style="color: var(--text); font-weight: 600;">${startTimeStr}</div>
+                                            </div>
+                                            <div>
+                                                <div style="color: var(--muted);">Bis</div>
+                                                <div style="color: var(--text); font-weight: 600;">${endTimeStr}</div>
+                                            </div>
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 11px;">
+                                            <div>
+                                                <div style="color: var(--muted);">Vorlauf</div>
+                                                <div style="color: var(--text); font-weight: 600;">${endTempV}${endTempV !== '—' ? '°C' : ''}</div>
+                                            </div>
+                                            <div>
+                                                <div style="color: var(--muted);">Rücklauf</div>
+                                                <div style="color: var(--text); font-weight: 600;">${endTempR}${endTempR !== '—' ? '°C' : ''}</div>
+                                            </div>
+                                        </div>
+                                        <div style="border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+                                                <div>
+                                                    <div style="color: var(--muted);">Diesel (berechnet)</div>
+                                                    <div style="color: var(--text); font-weight: 600;">${calculatedConsumption.toFixed(2)}L</div>
+                                                    <div style="color: var(--muted); font-size: 9px;">(${consumptionPerHour.toFixed(1)}L/h × ${durationStr})</div>
+                                                </div>
+                                                ${measuredConsumption !== null && measuredConsumption > 0 ? `
+                                                <div>
+                                                    <div style="color: var(--muted);">Diesel (gemessen)</div>
+                                                    <div style="color: var(--text); font-weight: 600;">${measuredConsumption.toFixed(2)}L</div>
+                                                    ${consumptionComparison !== null ? `
+                                                    <div style="color: ${Math.abs(Number(consumptionComparison)) > 20 ? '#e74c3c' : '#f39c12'}; font-size: 9px;">
+                                                        ${Number(consumptionComparison) > 0 ? '+' : ''}${consumptionComparison}% Abweichung
+                                                    </div>
+                                                    ` : ''}
+                                                </div>
+                                                ` : `
+                                                <div>
+                                                    <div style="color: var(--muted);">Diesel (gemessen)</div>
+                                                    <div style="color: var(--muted); font-size: 10px;">— (Sensor ungenau)</div>
+                                                </div>
+                                                `}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                    } else {
+                        eventsEl.innerHTML = '<div style="color: var(--muted); text-align: center; padding: 10px;">Keine vollständigen Heizungsperioden gefunden.<br><span style="font-size: 10px;">Es wurden ' + sortedEvents.length + ' Switch-Events gefunden, aber keine vollständigen ON->OFF-Zyklen.</span></div>';
+                    }
+                }
+            }
         }
         
         // ========== COLLAPSIBLE CARDS (persisted in localStorage) ==========
@@ -3738,7 +4272,8 @@
                 
                 // Special handling for weather and statistics cards
                 if (cardId === 'weatherCard') {
-                    updateWeatherCardHeader(collapsed);
+                    // Use setTimeout to ensure DOM is updated before calling updateWeatherCardHeader
+                    setTimeout(() => updateWeatherCardHeader(collapsed), 10);
                 } else if (cardId === 'statisticsCard') {
                     updateStatisticsCardHeader(collapsed);
                 }
@@ -3811,6 +4346,20 @@
                     const nowCollapsed = !content.classList.contains('collapsed');
                     setCollapsed(content, arrow, nowCollapsed, card.id || null);
                     localStorage.setItem(storageKey, nowCollapsed ? 'collapsed' : 'expanded');
+                    // Force update weather header after toggle to ensure it shows correctly
+                    if (card.id === 'weatherCard') {
+                        // Use longer timeout to ensure DOM is fully updated and prevent race conditions
+                        setTimeout(() => {
+                            const wc = document.getElementById('weatherCard');
+                            if (wc) {
+                                const wcContent = wc.querySelector('.card-content');
+                                if (wcContent) {
+                                    const isCollapsedNow = wcContent.classList.contains('collapsed');
+                                    updateWeatherCardHeader(isCollapsedNow);
+                                }
+                            }
+                        }, 150);
+                    }
                 });
             });
             
@@ -3835,27 +4384,58 @@
         function updateWeatherCardHeader(collapsed) {
             const titleEl = document.getElementById('weatherTitle');
             const locationEl = document.getElementById('weatherLocation');
+            const headerMiniEl = document.getElementById('headerWeatherMini');
+            const headerIconEl = document.getElementById('headerWeatherIcon');
+            const headerTempEl = document.getElementById('headerWeatherTemp');
             if (!titleEl) return;
             
             if (collapsed) {
                 // Show weather icon + temperature when collapsed
-                if (currentState.weather && currentState.weather.valid && currentState.weather.temperature !== undefined) {
-                    const w = currentState.weather;
+                // Always check currentState.weather, don't lose data on collapse
+                const w = currentState.weather;
+                if (w && w.valid && w.temperature !== undefined) {
                     const currentInfo = getWeatherInfo(w.weatherCode);
                     const temp = Math.round(w.temperature);
                     titleEl.textContent = `${currentInfo.icon} ${temp}°C`;
                     titleEl.style.fontSize = '14px';
                     if (locationEl) locationEl.style.display = 'none';
+                    
+                    // Show mini weather in header
+                    if (headerMiniEl) headerMiniEl.style.display = 'flex';
+                    if (headerIconEl) headerIconEl.textContent = currentInfo.icon;
+                    if (headerTempEl) headerTempEl.textContent = `${temp}°C`;
                 } else {
-                    titleEl.textContent = '🌤️ -';
+                    // Still show location or icon even if temp not available
+                    const loc = w && w.locationName ? w.locationName : (currentState.locationName || '');
+                    if (loc && loc !== 'Unbekannter Ort') {
+                        titleEl.textContent = `🌤️ ${loc}`;
+                    } else {
+                        titleEl.textContent = '🌤️ Wetter';
+                    }
                     titleEl.style.fontSize = '14px';
                     if (locationEl) locationEl.style.display = 'none';
+                    
+                    // Hide mini weather in header if no valid data
+                    if (headerMiniEl) headerMiniEl.style.display = 'none';
                 }
             } else {
-                // Show "🌤️ Wetter" when expanded
+                // Show "🌤️ Wetter" when expanded (always, never show location in title)
                 titleEl.textContent = '🌤️ Wetter';
                 titleEl.style.fontSize = '';
-                if (locationEl) locationEl.style.display = '';
+                // Show location in subtitle when expanded
+                if (locationEl) {
+                    const w = currentState.weather;
+                    const loc = (w && w.locationName) ? w.locationName : (currentState.locationName || '');
+                    if (loc && loc !== 'Unbekannter Ort') {
+                        locationEl.textContent = loc;
+                        locationEl.style.display = '';
+                    } else {
+                        locationEl.style.display = 'none';
+                    }
+                }
+                
+                // Hide mini weather in header when card is expanded
+                if (headerMiniEl) headerMiniEl.style.display = 'none';
             }
         }
         
@@ -3977,6 +4557,50 @@
             document.getElementById('otaModal').classList.remove('active');
         }
         
+        // Update file input labels when files are selected
+        (function setupFileInputLabels() {
+            const firmwareFile = document.getElementById('firmwareFile');
+            const frontendFile = document.getElementById('frontendFile');
+            const firmwareFileName = document.getElementById('firmwareFileName');
+            const frontendFileName = document.getElementById('frontendFileName');
+            const firmwareFileLabel = document.getElementById('firmwareFileLabel');
+            const frontendFileLabel = document.getElementById('frontendFileLabel');
+            
+            if (firmwareFile && firmwareFileName && firmwareFileLabel) {
+                firmwareFile.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        firmwareFileName.textContent = file.name;
+                        firmwareFileLabel.style.borderColor = '#3498db';
+                        firmwareFileLabel.style.background = 'rgba(52, 152, 219, 0.1)';
+                        firmwareFileName.style.color = 'var(--text)';
+                    } else {
+                        firmwareFileName.textContent = 'Datei auswählen';
+                        firmwareFileLabel.style.borderColor = 'var(--border)';
+                        firmwareFileLabel.style.background = 'rgba(255,255,255,0.02)';
+                        firmwareFileName.style.color = 'var(--muted)';
+                    }
+                });
+            }
+            
+            if (frontendFile && frontendFileName && frontendFileLabel) {
+                frontendFile.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        frontendFileName.textContent = file.name;
+                        frontendFileLabel.style.borderColor = '#9b59b6';
+                        frontendFileLabel.style.background = 'rgba(155, 89, 182, 0.1)';
+                        frontendFileName.style.color = 'var(--text)';
+                    } else {
+                        frontendFileName.textContent = 'Datei auswählen';
+                        frontendFileLabel.style.borderColor = 'var(--border)';
+                        frontendFileLabel.style.background = 'rgba(255,255,255,0.02)';
+                        frontendFileName.style.color = 'var(--muted)';
+                    }
+                });
+            }
+        })();
+        
         // Close modal on overlay click and ESC key
         function initModalHandlers() {
             const otaModal = document.getElementById('otaModal');
@@ -4032,16 +4656,20 @@
                 return;
             }
             
+            // Reset overlay flag at start of upload
+            overlayShown = false;
+            
             const uploadBtn = document.getElementById('uploadBtn');
             const progressContainer = document.getElementById('uploadProgress');
             const progressBar = document.getElementById('uploadProgressBar');
+            const progressPercent = document.getElementById('uploadProgressPercent');
             const statusText = document.getElementById('uploadStatus');
             
             uploadBtn.disabled = true;
             uploadBtn.textContent = '⏳ Wird hochgeladen...';
             progressContainer.style.display = 'block';
             progressBar.style.width = '0%';
-            progressBar.textContent = '0%';
+            if (progressPercent) progressPercent.textContent = '0%';
             statusText.textContent = 'Bereite Upload vor...';
             
             try {
@@ -4056,7 +4684,7 @@
                         const percentComplete = Math.round((e.loaded / e.total) * 100);
                         lastPercentComplete = percentComplete;
                         progressBar.style.width = percentComplete + '%';
-                        progressBar.textContent = percentComplete + '%';
+                        if (progressPercent) progressPercent.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024 / 1024).toFixed(1)} MB von ${(e.total / 1024 / 1024).toFixed(1)} MB`;
                         
                         // If upload reaches 100%, assume success (response might not arrive due to reboot)
@@ -4066,7 +4694,7 @@
                                 // Check if we haven't already shown success
                                 if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
                                     progressBar.style.width = '100%';
-                                    progressBar.textContent = '100%';
+                                    if (progressPercent) progressPercent.textContent = '100%';
                                     statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
                                     statusText.style.color = '#27ae60';
                                     showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
@@ -4074,7 +4702,9 @@
                                     // Set flag and wait for WebSocket to reconnect
                                     waitingForReboot = true;
                                     reloadTriggered = false; // Reset reload flag
-                                    showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                                    if (!overlayShown) {
+                                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                                    }
                                     
                                     // Clear any existing reconnect timer
                                     if (wsReconnectTimer) {
@@ -4122,7 +4752,7 @@
                 xhr.addEventListener('load', () => {
                     if (xhr.status === 200) {
                         progressBar.style.width = '100%';
-                        progressBar.textContent = '100%';
+                        if (progressPercent) progressPercent.textContent = '100%';
                         statusText.textContent = '✅ Upload erfolgreich! Warte auf ESP32-Neustart...';
                         statusText.style.color = '#27ae60';
                         showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
@@ -4130,7 +4760,9 @@
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
                         reloadTriggered = false; // Reset reload flag
-                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         
                         // Clear any existing reconnect timer
                         if (wsReconnectTimer) {
@@ -4185,7 +4817,9 @@
                             
                             // Set flag and wait for WebSocket to reconnect
                             waitingForReboot = true;
-                            showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                            if (!overlayShown) {
+                                showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                            }
                             
                             // Close current WebSocket so it will reconnect when ESP32 is back
                             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -4216,7 +4850,9 @@
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
                         reloadTriggered = false; // Reset reload flag
-                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         
                         // Clear any existing reconnect timer
                         if (wsReconnectTimer) {
@@ -4266,7 +4902,9 @@
                         statusText.style.color = '#27ae60';
                         showToast('Firmware wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         waitingForReboot = true;
-                        showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Firmware-Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             ws.close();
                         }
@@ -4318,13 +4956,14 @@
             const uploadBtn = document.getElementById('uploadBtnFS');
             const progressContainer = document.getElementById('uploadProgressFS');
             const progressBar = document.getElementById('uploadProgressBarFS');
+            const progressPercent = document.getElementById('uploadProgressPercentFS');
             const statusText = document.getElementById('uploadStatusFS');
             
             uploadBtn.disabled = true;
             uploadBtn.textContent = '⏳ Wird hochgeladen...';
             progressContainer.style.display = 'block';
             progressBar.style.width = '0%';
-            progressBar.textContent = '0%';
+            if (progressPercent) progressPercent.textContent = '0%';
             statusText.textContent = 'Bereite Frontend-Upload vor...';
             
             try {
@@ -4339,7 +4978,7 @@
                         const percentComplete = Math.round((e.loaded / e.total) * 100);
                         lastPercentComplete = percentComplete;
                         progressBar.style.width = percentComplete + '%';
-                        progressBar.textContent = percentComplete + '%';
+                        if (progressPercent) progressPercent.textContent = percentComplete + '%';
                         statusText.textContent = `Hochgeladen: ${(e.loaded / 1024).toFixed(1)} KB von ${(e.total / 1024).toFixed(1)} KB`;
                         
                         // If upload reaches 100%, assume success (response might not arrive due to reboot)
@@ -4349,7 +4988,7 @@
                                 // Check if we haven't already shown success
                                 if (statusText.textContent.indexOf('erfolgreich') === -1 && statusText.textContent.indexOf('neustartet') === -1 && statusText.textContent.indexOf('Warte') === -1) {
                                     progressBar.style.width = '100%';
-                                    progressBar.textContent = '100%';
+                                    if (progressPercent) progressPercent.textContent = '100%';
                                     statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
                                     statusText.style.color = '#27ae60';
                                     showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
@@ -4357,7 +4996,9 @@
                                     // Set flag and wait for WebSocket to reconnect
                                     waitingForReboot = true;
                                     reloadTriggered = false; // Reset reload flag
-                                    showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                                    if (!overlayShown) {
+                                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                                    }
                                     
                                     // Clear any existing reconnect timer
                                     if (wsReconnectTimer) {
@@ -4405,7 +5046,7 @@
                 xhr.addEventListener('load', () => {
                     if (xhr.status === 200) {
                         progressBar.style.width = '100%';
-                        progressBar.textContent = '100%';
+                        if (progressPercent) progressPercent.textContent = '100%';
                         statusText.textContent = 'Frontend-Upload erfolgreich! Warte auf ESP32-Neustart...';
                         statusText.style.color = '#27ae60';
                         showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
@@ -4413,7 +5054,9 @@
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
                         reloadTriggered = false; // Reset reload flag
-                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         
                         // Clear any existing reconnect timer
                         if (wsReconnectTimer) {
@@ -4469,7 +5112,9 @@
                             // Set flag and wait for WebSocket to reconnect
                             waitingForReboot = true;
                             reloadTriggered = false; // Reset reload flag
-                            showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                            if (!overlayShown) {
+                                showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                            }
                             
                             // Clear any existing reconnect timer
                             if (wsReconnectTimer) {
@@ -4522,7 +5167,9 @@
                         // Set flag and wait for WebSocket to reconnect
                         waitingForReboot = true;
                         reloadTriggered = false; // Reset reload flag
-                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         
                         // Clear any existing reconnect timer
                         if (wsReconnectTimer) {
@@ -4573,7 +5220,9 @@
                         showToast('Frontend wurde erfolgreich hochgeladen! Warte auf ESP32-Neustart...', 'success', 5000);
                         waitingForReboot = true;
                         reloadTriggered = false; // Reset reload flag
-                        showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        if (!overlayShown) {
+                            showRebootOverlay('Frontend (LittleFS) Update…', 'Der ESP32 startet neu und ist gleich wieder erreichbar. Bitte ~20–40s warten. Wir verbinden automatisch neu…');
+                        }
                         
                         // Clear any existing reconnect timer
                         if (wsReconnectTimer) {
@@ -4629,6 +5278,45 @@
                 progressContainer.style.display = 'none';
                 statusText.textContent = '';
                 statusText.style.color = '#7f8c8d';
+            }
+        }
+        
+        // ========== SERVICE WORKER REGISTRATION ==========
+        if ('serviceWorker' in navigator && !isLocalMode) {
+            navigator.serviceWorker.register('/sw.js').then((registration) => {
+                console.log('Service Worker registered:', registration.scope);
+            }).catch((error) => {
+                console.log('Service Worker registration failed:', error);
+            });
+        }
+        
+        // ========== PUSH NOTIFICATIONS ==========
+        async function requestNotificationPermission() {
+            if (!('Notification' in window)) {
+                console.log('This browser does not support notifications');
+                return false;
+            }
+            
+            if (Notification.permission === 'granted') {
+                return true;
+            }
+            
+            if (Notification.permission !== 'denied') {
+                const permission = await Notification.requestPermission();
+                return permission === 'granted';
+            }
+            
+            return false;
+        }
+        
+        // Request notification permission on first load
+        if (!isLocalMode) {
+            requestNotificationPermission();
+        }
+        
+        function showBrowserNotification(title, body, icon = '🔥') {
+            if (Notification.permission === 'granted') {
+                new Notification(title, { body, icon, badge: icon, tag: 'heating-notification' });
             }
         }
         

@@ -24,7 +24,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.4"     // Version shown in dashboard
+#define FIRMWARE_VERSION "v2.2.7"     // Version shown in dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -83,6 +83,27 @@ struct Statistics {
     unsigned long lastResetDay = 0;        // Day of last reset (for daily stats)
 } stats;
 
+// ========== SWITCH EVENT HISTORY ==========
+#define MAX_SWITCH_EVENTS 50  // Store last 50 switch events
+struct SwitchEvent {
+    unsigned long timestamp = 0;  // Unix timestamp (or 0 if NTP not synced)
+    bool isOn = false;            // true = ON, false = OFF
+    float tempVorlauf = NAN;      // Temperature when switched
+    float tempRuecklauf = NAN;
+    unsigned long uptimeMs = 0;   // Uptime in milliseconds (fallback if no NTP)
+    float tankLiters = NAN;       // Tank level in liters when switched (for consumption comparison)
+} switchEvents[MAX_SWITCH_EVENTS];
+int switchEventIndex = 0;  // Ring buffer index
+
+// ========== BEHAVIOR WARNING TRACKING ==========
+#define MAX_SWITCH_HISTORY 20
+#define WARNING_THRESHOLD_SWITCHES 10  // Warn if more than 10 switches
+#define WARNING_TIME_WINDOW_MS (15 * 60 * 1000)  // in last 15 minutes
+unsigned long switchTimestamps[MAX_SWITCH_HISTORY];
+int switchHistoryIndex = 0;
+bool behaviorWarningActive = false;
+unsigned long lastBehaviorWarningTime = 0;
+
 // ========== GLOBAL STATE ==========
 struct SystemState {
     bool heatingOn = false;
@@ -109,6 +130,9 @@ struct SystemState {
     float tankDistance = -1.0;          // Current distance to liquid surface in cm
     float tankLiters = 0.0;             // Calculated liters
     int tankPercent = 0;                // Calculated fill percentage
+    
+    // Diesel consumption calculation
+    float dieselConsumptionPerHour = 2.0;  // Default: 2.0 liters per hour when heating is ON
     
     // Weather & Location
     float latitude = 50.952149;         // Default: Cologne
@@ -305,6 +329,9 @@ void serialLogF(const char* format, ...) {
 bool isTelegramConfigured();
 void sendTelegramMessage(String message);
 
+// ========== BEHAVIOR WARNING (FORWARD DECLARATION) ==========
+void checkUnusualBehavior();
+
 // WebSocket event handler
 void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 
                      AwsEventType type, void *arg, uint8_t *data, size_t len) {
@@ -383,6 +410,10 @@ void setPump(bool on, bool manualOverride = false) {
     }
 }
 
+// Forward declarations
+void saveSwitchEvents();
+void loadSwitchEvents();
+
 // ========== RELAY CONTROL (Active-Low) ==========
 void setHeater(bool on, bool saveToNVS = true) {
     bool stateChanged = (on != state.heatingOn);
@@ -393,6 +424,31 @@ void setHeater(bool on, bool saveToNVS = true) {
         stats.todaySwitches++;
         lastStateChangeTime = millis();
         serialLogF("Switch #%lu: Heater %s\n", stats.switchCount, on ? "ON" : "OFF");
+        
+        // Track switch timestamp for behavior analysis
+        switchTimestamps[switchHistoryIndex] = millis();
+        switchHistoryIndex = (switchHistoryIndex + 1) % MAX_SWITCH_HISTORY;
+        
+        // Store switch event with temperatures and tank level
+        struct tm timeinfo;
+        bool hasTime = getLocalTime(&timeinfo, 100);
+        switchEvents[switchEventIndex].isOn = on;
+        switchEvents[switchEventIndex].tempVorlauf = state.tempVorlauf;
+        switchEvents[switchEventIndex].tempRuecklauf = state.tempRuecklauf;
+        switchEvents[switchEventIndex].uptimeMs = millis();
+        switchEvents[switchEventIndex].tankLiters = state.tankSensorAvailable ? state.tankLiters : NAN;
+        if (hasTime) {
+            switchEvents[switchEventIndex].timestamp = mktime(&timeinfo);
+        } else {
+            switchEvents[switchEventIndex].timestamp = 0;  // No NTP sync
+        }
+        switchEventIndex = (switchEventIndex + 1) % MAX_SWITCH_EVENTS;
+        
+        // Save switch events to NVS (persist across reboots)
+        saveSwitchEvents();
+        
+        // Check for unusual behavior
+        checkUnusualBehavior();
     }
     
     state.heatingOn = on;
@@ -481,6 +537,41 @@ void setHeater(bool on, bool saveToNVS = true) {
             msg += "🌡️ Vorlauf: " + String(state.tempVorlauf, 1) + "°C";
         }
         sendTelegramMessage(msg);
+    }
+}
+
+// ========== CHECK FOR UNUSUAL BEHAVIOR ==========
+void checkUnusualBehavior() {
+    unsigned long now = millis();
+    int switchCountInWindow = 0;
+    
+    // Count switches in the last WARNING_TIME_WINDOW_MS
+    for (int i = 0; i < MAX_SWITCH_HISTORY; i++) {
+        if (switchTimestamps[i] > 0 && (now - switchTimestamps[i]) < WARNING_TIME_WINDOW_MS) {
+            switchCountInWindow++;
+        }
+    }
+    
+    // Check if we exceed the threshold
+    bool shouldWarn = (switchCountInWindow >= WARNING_THRESHOLD_SWITCHES);
+    
+    if (shouldWarn && !behaviorWarningActive) {
+        behaviorWarningActive = true;
+        lastBehaviorWarningTime = now;
+        
+        Serial.printf("⚠️ WARNUNG: Ungewöhnliches Verhalten erkannt! %d Schaltungen in den letzten 15 Minuten.\n", switchCountInWindow);
+        
+        // Send Telegram warning if configured
+        if (isTelegramConfigured()) {
+            String msg = "⚠️ WARNUNG: Ungewöhnliches Verhalten!\n";
+            msg += String(switchCountInWindow) + " Schaltungen in den letzten 15 Minuten.\n";
+            msg += "Bitte Heizungsanlage prüfen!";
+            sendTelegramMessage(msg);
+        }
+    } else if (!shouldWarn && behaviorWarningActive) {
+        // Clear warning if behavior normalized
+        behaviorWarningActive = false;
+        Serial.println("✅ Verhalten normalisiert - Warnung aufgehoben");
     }
 }
 
@@ -1114,6 +1205,9 @@ void loadSettings() {
     state.tankHeight = prefs.getFloat("tankHeight", 100.0);
     state.tankCapacity = prefs.getFloat("tankCapacity", 1000.0);
     
+    // Load diesel consumption setting
+    state.dieselConsumptionPerHour = prefs.getFloat("dieselPerHour", 2.0);
+    
     // Load location (default: Cologne, Germany)
     state.latitude = prefs.getFloat("latitude", 50.952149);
     state.longitude = prefs.getFloat("longitude", 7.1229);
@@ -1174,12 +1268,47 @@ void loadSettings() {
                  state.frostProtectionTemp);
     serialLogF("Schedules loaded: %d\n", MAX_SCHEDULES);
     
+    // Load switch events history
+    loadSwitchEvents();
+    
     // Safety note:
     // Do NOT silently flip pumpOn here. We will enforce "heating ON => pump ON" during setup()
     // and actually apply the GPIO state there. This avoids state/relay mismatches after reboot.
     if (state.heatingOn && !state.pumpOn) {
         serialLogLn("⚠️ SAFETY: Heating was ON but pump OFF in NVS (will force pump ON during setup)");
     }
+}
+
+// ========== SWITCH EVENTS PERSISTENCE ==========
+void saveSwitchEvents() {
+    prefs.begin("switchevts", false);
+    // Save current index
+    prefs.putUChar("idx", switchEventIndex);
+    // Save all events (as binary blob)
+    size_t dataSize = MAX_SWITCH_EVENTS * sizeof(SwitchEvent);
+    prefs.putBytes("events", switchEvents, dataSize);
+    prefs.end();
+}
+
+void loadSwitchEvents() {
+    prefs.begin("switchevts", true);
+    if (prefs.isKey("idx") && prefs.isKey("events")) {
+        switchEventIndex = prefs.getUChar("idx", 0);
+        size_t dataSize = MAX_SWITCH_EVENTS * sizeof(SwitchEvent);
+        size_t storedSize = prefs.getBytesLength("events");
+        if (storedSize == dataSize) {
+            prefs.getBytes("events", switchEvents, dataSize);
+            serialLogF("[SwitchEvents] Loaded %d events from NVS\n", MAX_SWITCH_EVENTS);
+        } else {
+            serialLogF("[SwitchEvents] Size mismatch: expected %d, got %d\n", dataSize, storedSize);
+        }
+    } else {
+        // First run: initialize with zeros
+        memset(switchEvents, 0, sizeof(switchEvents));
+        switchEventIndex = 0;
+        serialLogLn("[SwitchEvents] No saved events, initialized empty");
+    }
+    prefs.end();
 }
 
 // Load relay configuration early in setup, before configuring GPIO directions.
@@ -1226,6 +1355,9 @@ void saveSettings() {
     // Save tank configuration
     prefs.putFloat("tankHeight", state.tankHeight);
     prefs.putFloat("tankCapacity", state.tankCapacity);
+    
+    // Save diesel consumption setting
+    prefs.putFloat("dieselPerHour", state.dieselConsumptionPerHour);
     
     // Save location
     prefs.putFloat("latitude", state.latitude);
@@ -1412,6 +1544,16 @@ void setupWebServer() {
         request->send(LittleFS, "/index.html", "text/html");
     });
     
+    // Serve manifest.json for PWA
+    server.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(LittleFS, "/manifest.json", "application/json");
+    });
+    
+    // Serve service worker
+    server.on("/sw.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(LittleFS, "/sw.js", "application/javascript");
+    });
+    
     // API: Get current status
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         // NOTE: This payload includes nested arrays/objects (schedules) and optional data.
@@ -1479,6 +1621,7 @@ void setupWebServer() {
         doc["todaySwitches"] = stats.todaySwitches;
         doc["onTimeSeconds"] = stats.onTimeSeconds;
         doc["offTimeSeconds"] = stats.offTimeSeconds;
+        doc["behaviorWarning"] = behaviorWarningActive;
         
         // Frost protection
         doc["frostEnabled"] = state.frostProtectionEnabled;
@@ -1497,6 +1640,7 @@ void setupWebServer() {
         }
         doc["tankHeight"] = state.tankHeight;
         doc["tankCapacity"] = state.tankCapacity;
+        doc["dieselConsumptionPerHour"] = state.dieselConsumptionPerHour;
         
         // Location
         doc["latitude"] = state.latitude;
@@ -1784,6 +1928,16 @@ void setupWebServer() {
                 }
             }
             
+            // Update diesel consumption per hour
+            if (doc.containsKey("dieselConsumptionPerHour")) {
+                float consumption = doc["dieselConsumptionPerHour"];
+                if (consumption > 0 && consumption <= 20) {  // Max 20 liters per hour
+                    // Round to 1 decimal place to avoid float precision issues
+                    state.dieselConsumptionPerHour = round(consumption * 10.0) / 10.0;
+                    changed = true;
+                }
+            }
+            
             // Update temperatures
             if (doc.containsKey("tempOn")) {
                 state.tempOn = doc["tempOn"];
@@ -2004,6 +2158,284 @@ void setupWebServer() {
         doc["echoReadNow"] = digitalRead(ECHO_PIN);
         doc["trigReadNow"] = digitalRead(TRIG_PIN);
 
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+    
+    // API: Stats history (no authentication required)
+    server.on("/api/stats-history", HTTP_GET, [](AsyncWebServerRequest *request) {
+        
+        StaticJsonDocument<8192> doc;  // Increased for switch events
+        
+        // Return current statistics for aggregation
+        doc["switchCount"] = stats.switchCount;
+        doc["todaySwitches"] = stats.todaySwitches;
+        doc["onTimeSeconds"] = stats.onTimeSeconds;
+        doc["offTimeSeconds"] = stats.offTimeSeconds;
+        
+        // Calculate total diesel consumption (from total ON time)
+        float totalDieselLiters = (stats.onTimeSeconds / 3600.0) * state.dieselConsumptionPerHour;
+        doc["totalDieselLiters"] = round(totalDieselLiters * 10) / 10.0;
+        
+        // Today's data object
+        JsonObject today = doc.createNestedObject("today");
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo, 100)) {
+            char dateKey[9];
+            sprintf(dateKey, "%04d%02d%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+            today["dateKey"] = dateKey;
+            today["switches"] = stats.todaySwitches;
+            
+            // Calculate today's on/off times from switch events
+            unsigned long todayOnSeconds = 0;
+            unsigned long todayOffSeconds = 0;
+            unsigned long todayStartTime = 0;
+            bool todayStarted = false;
+            float sumVorlauf = 0.0;
+            float sumRuecklauf = 0.0;
+            float minVorlauf = NAN;
+            float maxVorlauf = NAN;
+            float minRuecklauf = NAN;
+            float maxRuecklauf = NAN;
+            unsigned long sampleCount = 0;
+            
+            // Get today's timestamp at 00:00:00
+            struct tm todayStart = timeinfo;
+            todayStart.tm_hour = 0;
+            todayStart.tm_min = 0;
+            todayStart.tm_sec = 0;
+            unsigned long todayStartTimestamp = mktime(&todayStart);
+            
+            // Get yesterday's timestamp at 00:00:00 (for events that started yesterday but ended today)
+            struct tm yesterdayStart = timeinfo;
+            yesterdayStart.tm_hour = 0;
+            yesterdayStart.tm_min = 0;
+            yesterdayStart.tm_sec = 0;
+            // Subtract one day
+            time_t yesterdayTime = mktime(&yesterdayStart);
+            yesterdayTime -= 86400; // 24 hours in seconds
+            unsigned long yesterdayStartTimestamp = (unsigned long)yesterdayTime;
+            
+            // Collect and sort today's events chronologically (including events from yesterday that affect today)
+            struct EventWithIndex {
+                const SwitchEvent* evt;
+                int originalIdx;
+                unsigned long sortKey; // timestamp or uptimeMs for sorting
+            };
+            EventWithIndex todayEvents[MAX_SWITCH_EVENTS];
+            int todayEventCount = 0;
+            
+            for (int i = 0; i < MAX_SWITCH_EVENTS; ++i) {
+                int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
+                const SwitchEvent& evt = switchEvents[idx];
+                if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
+                
+                // Check if event is from today or yesterday (for overnight runs)
+                bool isRelevant = false;
+                if (evt.timestamp > 0) {
+                    // Include events from yesterday (for overnight heating cycles)
+                    // and events from today
+                    isRelevant = (evt.timestamp >= yesterdayStartTimestamp && evt.timestamp < (todayStartTimestamp + 86400));
+                } else if (evt.uptimeMs > 0) {
+                    // Fallback: if no timestamp, assume it's relevant if uptime is reasonable
+                    unsigned long currentUptime = millis();
+                    if (evt.uptimeMs <= currentUptime && (currentUptime - evt.uptimeMs) < 172800000) {
+                        isRelevant = true; // Within last 48 hours (to catch overnight cycles)
+                    }
+                }
+                
+                if (!isRelevant) continue;
+                
+                todayEvents[todayEventCount].evt = &evt;
+                todayEvents[todayEventCount].originalIdx = idx;
+                todayEvents[todayEventCount].sortKey = evt.timestamp > 0 ? evt.timestamp : evt.uptimeMs;
+                todayEventCount++;
+            }
+            
+            // Sort events chronologically (oldest first)
+            for (int i = 0; i < todayEventCount - 1; ++i) {
+                for (int j = i + 1; j < todayEventCount; ++j) {
+                    if (todayEvents[i].sortKey > todayEvents[j].sortKey) {
+                        EventWithIndex temp = todayEvents[i];
+                        todayEvents[i] = todayEvents[j];
+                        todayEvents[j] = temp;
+                    }
+                }
+            }
+            
+            // Calculate on/off times from sorted events
+            // Track the state at the start of today (from yesterday's last event)
+            unsigned long lastOnTime = 0;
+            bool lastWasOn = false;
+            bool startedBeforeToday = false;
+            
+            for (int i = 0; i < todayEventCount; ++i) {
+                const SwitchEvent& evt = *todayEvents[i].evt;
+                unsigned long eventTime = evt.timestamp > 0 ? evt.timestamp : (evt.uptimeMs / 1000);
+                
+                // If this event is from yesterday and it's an ON event, we started before today
+                if (evt.timestamp > 0 && evt.timestamp < todayStartTimestamp && evt.isOn) {
+                    startedBeforeToday = true;
+                    lastOnTime = todayStartTimestamp; // Start counting from today 00:00
+                    lastWasOn = true;
+                    continue;
+                }
+                
+                if (evt.isOn) {
+                    // ON event
+                    if (lastWasOn && lastOnTime > 0) {
+                        // Previous ON period ended (shouldn't happen, but handle it)
+                        unsigned long duration = eventTime - lastOnTime;
+                        if (eventTime >= todayStartTimestamp) {
+                            todayOffSeconds += duration;
+                        }
+                    }
+                    lastOnTime = eventTime;
+                    lastWasOn = true;
+                } else {
+                    // OFF event
+                    if (lastWasOn && lastOnTime > 0) {
+                        // Calculate ON duration
+                        unsigned long duration = eventTime - lastOnTime;
+                        // Only count time that's within today
+                        if (eventTime >= todayStartTimestamp) {
+                            if (lastOnTime < todayStartTimestamp) {
+                                // Started before today, only count from today 00:00
+                                todayOnSeconds += (eventTime - todayStartTimestamp);
+                            } else {
+                                // Entirely within today
+                                todayOnSeconds += duration;
+                            }
+                        }
+                    } else if (!lastWasOn && lastOnTime > 0) {
+                        // Calculate OFF duration
+                        unsigned long duration = eventTime - lastOnTime;
+                        if (eventTime >= todayStartTimestamp) {
+                            if (lastOnTime < todayStartTimestamp) {
+                                // Started before today, only count from today 00:00
+                                todayOffSeconds += (eventTime - todayStartTimestamp);
+                            } else {
+                                // Entirely within today
+                                todayOffSeconds += duration;
+                            }
+                        }
+                    }
+                    lastOnTime = eventTime;
+                    lastWasOn = false;
+                }
+                
+                // Track temperatures from all events
+                if (!isnan(evt.tempVorlauf)) {
+                    sumVorlauf += evt.tempVorlauf;
+                    if (isnan(minVorlauf) || evt.tempVorlauf < minVorlauf) minVorlauf = evt.tempVorlauf;
+                    if (isnan(maxVorlauf) || evt.tempVorlauf > maxVorlauf) maxVorlauf = evt.tempVorlauf;
+                }
+                if (!isnan(evt.tempRuecklauf)) {
+                    sumRuecklauf += evt.tempRuecklauf;
+                    if (isnan(minRuecklauf) || evt.tempRuecklauf < minRuecklauf) minRuecklauf = evt.tempRuecklauf;
+                    if (isnan(maxRuecklauf) || evt.tempRuecklauf > maxRuecklauf) maxRuecklauf = evt.tempRuecklauf;
+                }
+                sampleCount++;
+            }
+            
+            // If currently ON, add time from last ON event to now
+            if (lastWasOn && state.heatingOn && lastOnTime > 0) {
+                unsigned long currentTime = 0;
+                if (getLocalTime(&timeinfo, 100)) {
+                    currentTime = mktime(&timeinfo);
+                } else {
+                    currentTime = millis() / 1000; // Fallback to uptime
+                }
+                if (currentTime > lastOnTime) {
+                    unsigned long duration = currentTime - lastOnTime;
+                    todayOnSeconds += duration;
+                }
+            }
+            
+            // Use calculated values or fallback to stats
+            unsigned long finalOnSeconds = todayOnSeconds > 0 ? todayOnSeconds : stats.onTimeSeconds;
+            unsigned long finalOffSeconds = todayOffSeconds > 0 ? todayOffSeconds : stats.offTimeSeconds;
+            today["onSeconds"] = finalOnSeconds;
+            today["offSeconds"] = finalOffSeconds;
+            
+            // Calculate diesel consumption (liters = hours * consumption per hour)
+            float todayDieselLiters = (finalOnSeconds / 3600.0) * state.dieselConsumptionPerHour;
+            today["dieselLiters"] = round(todayDieselLiters * 10) / 10.0;
+            
+            // Temperature statistics
+            if (sampleCount > 0) {
+                today["avgVorlauf"] = round((sumVorlauf / sampleCount) * 10) / 10.0;
+                today["avgRuecklauf"] = round((sumRuecklauf / sampleCount) * 10) / 10.0;
+                today["minVorlauf"] = round(minVorlauf * 10) / 10.0;
+                today["maxVorlauf"] = round(maxVorlauf * 10) / 10.0;
+                today["minRuecklauf"] = round(minRuecklauf * 10) / 10.0;
+                today["maxRuecklauf"] = round(maxRuecklauf * 10) / 10.0;
+            } else {
+                // Fallback to current values
+                if (!isnan(state.tempVorlauf)) {
+                    today["avgVorlauf"] = round(state.tempVorlauf * 10) / 10.0;
+                } else {
+                    today["avgVorlauf"] = nullptr;
+                }
+                if (!isnan(state.tempRuecklauf)) {
+                    today["avgRuecklauf"] = round(state.tempRuecklauf * 10) / 10.0;
+                } else {
+                    today["avgRuecklauf"] = nullptr;
+                }
+                today["minVorlauf"] = nullptr;
+                today["maxVorlauf"] = nullptr;
+                today["minRuecklauf"] = nullptr;
+                today["maxRuecklauf"] = nullptr;
+            }
+            today["samples"] = sampleCount > 0 ? sampleCount : 1;
+        } else {
+            today["dateKey"] = "";
+            today["switches"] = 0;
+            today["onSeconds"] = 0;
+            today["offSeconds"] = 0;
+            today["avgVorlauf"] = nullptr;
+            today["avgRuecklauf"] = nullptr;
+            today["samples"] = 0;
+        }
+        
+        // Historical days array (empty for now - future: NVS ring buffer with daily aggregated data)
+        JsonArray daysArray = doc.createNestedArray("days");
+        
+        // Switch events array (last 50 events with temperatures)
+        JsonArray eventsArray = doc.createNestedArray("switchEvents");
+        // Start from oldest event (after current index) and wrap around
+        for (int i = 0; i < MAX_SWITCH_EVENTS; ++i) {
+            int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
+            const SwitchEvent& evt = switchEvents[idx];
+            // Skip empty entries (timestamp == 0 and uptimeMs == 0 means never written)
+            if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
+            
+            JsonObject eventObj = eventsArray.createNestedObject();
+            if (evt.timestamp > 0) {
+                eventObj["timestamp"] = evt.timestamp;
+            } else {
+                eventObj["timestamp"] = nullptr;
+            }
+            eventObj["isOn"] = evt.isOn;
+            eventObj["uptimeMs"] = evt.uptimeMs;
+            if (!isnan(evt.tempVorlauf)) {
+                eventObj["tempVorlauf"] = round(evt.tempVorlauf * 10) / 10.0;
+            } else {
+                eventObj["tempVorlauf"] = nullptr;
+            }
+            if (!isnan(evt.tempRuecklauf)) {
+                eventObj["tempRuecklauf"] = round(evt.tempRuecklauf * 10) / 10.0;
+            } else {
+                eventObj["tempRuecklauf"] = nullptr;
+            }
+            if (!isnan(evt.tankLiters)) {
+                eventObj["tankLiters"] = round(evt.tankLiters * 10) / 10.0;
+            } else {
+                eventObj["tankLiters"] = nullptr;
+            }
+        }
+        
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);

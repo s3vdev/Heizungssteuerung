@@ -1,0 +1,21 @@
+{
+  "name": "ESP32 Heizungssteuerung",
+  "short_name": "Heizung",
+  "description": "Steuerung für ESP32-basierte Heizungsanlage",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1d29",
+  "theme_color": "#667eea",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Cpath fill='%23667eea' d='M96 16L48 48v96l48 32 48-32V48L96 16z'/%3E%3Cpath fill='%23fff' d='M96 32L64 56v80l32 24 32-24V56L96 32zm0 24l16 12v56l-16 12-16-12V68l16-12z'/%3E%3Ccircle fill='%23f39c12' cx='96' cy='96' r='24'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "home"],
+  "screenshots": []
+}
+

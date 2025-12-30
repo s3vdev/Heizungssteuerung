@@ -1,12 +1,11 @@
 #!/bin/bash
 
-# GitHub Release Script für v2.2.2
+# GitHub Release Script für v2.2.7
 
 REPO="s3vdev/Heizungssteuerung"
-TAG="v2.2.1"
-TAG="v2.2.2"
-ZIP_FILE="ESP32-Heizungssteuerung-v2.2.2.zip"
-RELEASE_NOTES="RELEASE_NOTES_v2.2.2.md"
+TAG="v2.2.7"
+ZIP_FILE="ESP32-Heizungssteuerung-v2.2.7.zip"
+RELEASE_NOTES="RELEASE_NOTES_v2.2.7.md"
 
 echo "📦 Erstelle GitHub Release für $TAG..."
 
@@ -17,7 +16,7 @@ if command -v gh &> /dev/null; then
     # Erstelle Release mit gh
     gh release create "$TAG" \
         "$ZIP_FILE" \
-        --title "Release v2.2.1" \
+        --title "Release v2.2.7" \
         --notes-file "$RELEASE_NOTES" \
         --repo "$REPO"
     
@@ -109,7 +108,7 @@ else
     echo "Bitte manuell auf GitHub erstellen:"
     echo "1. Gehe zu: https://github.com/$REPO/releases/new"
     echo "2. Wähle Tag: $TAG"
-    echo "3. Titel: Release v2.2.1"
+    echo "3. Titel: Release v2.2.7"
     echo "4. Beschreibung: Siehe $RELEASE_NOTES"
     echo "5. Lade $ZIP_FILE hoch"
     echo ""
