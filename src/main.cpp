@@ -24,7 +24,7 @@
 #define ECHO_PIN 18           // GPIO18 for JSN-SR04T ECHO
 
 // ========== CONFIGURATION ==========
-#define FIRMWARE_VERSION "v2.2.7"     // Version shown in dashboard
+#define FIRMWARE_VERSION "v2.2.8"     // Version shown in dashboard
 #define HOSTNAME "heater"
 #define AP_SSID "HeaterSetup"
 #define AP_PASSWORD "12345678"
@@ -2545,7 +2545,7 @@ void setupWebServer() {
         
         // Skip API routes
         if (path.startsWith("/api/")) {
-            request->send(404, "text/plain", "Not found");
+        request->send(404, "text/plain", "Not found");
             return;
         }
         
