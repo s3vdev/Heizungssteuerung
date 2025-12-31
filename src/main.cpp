@@ -154,6 +154,10 @@ struct SystemState {
     // Relay GPIO pins (configurable; useful if a pin is damaged or miswired)
     uint8_t heaterRelayPin = DEFAULT_HEATING_RELAY_PIN;
     uint8_t pumpRelayPin = DEFAULT_PUMP_RELAY_PIN;
+    
+    // MySQL connection status (optional - only if MySQL API is available)
+    bool mysqlConnected = false;
+    unsigned long lastMySQLCheck = 0;
 } state;
 
 // ========== RELAY DRIVER HELPERS ==========
@@ -381,7 +385,7 @@ void setPump(bool on, bool manualOverride = false) {
     }
     
     state.pumpOn = on;
-
+    
     // Apply relay output based on configured polarity/off-mode
     applyRelayOutput(state.pumpRelayPin, on, state.pumpRelayActiveLow, state.pumpRelayOffMode, "Pump");
     
@@ -413,6 +417,10 @@ void setPump(bool on, bool manualOverride = false) {
 // Forward declarations
 void saveSwitchEvents();
 void loadSwitchEvents();
+bool checkMySQLConnection();
+bool saveSwitchEventToMySQL(const SwitchEvent& evt);
+bool fetchMySQLStats(StaticJsonDocument<8192>& doc);
+bool saveDailyStatsToMySQL(); // Save today's statistics to MySQL
 
 // ========== RELAY CONTROL (Active-Low) ==========
 void setHeater(bool on, bool saveToNVS = true) {
@@ -446,6 +454,14 @@ void setHeater(bool on, bool saveToNVS = true) {
         
         // Save switch events to NVS (persist across reboots)
         saveSwitchEvents();
+        
+        // Save switch event to MySQL (optional, non-blocking)
+        saveSwitchEventToMySQL(switchEvents[(switchEventIndex + MAX_SWITCH_EVENTS - 1) % MAX_SWITCH_EVENTS]);
+        
+        // If heating turned OFF, save today's stats to MySQL
+        if (!on) {
+            saveDailyStatsToMySQL();
+        }
         
         // Check for unusual behavior
         checkUnusualBehavior();
@@ -632,7 +648,7 @@ float readTankDistance() {
         lastUltrasonicDistanceCm = distance;
         return -1.0;
     }
-
+    
     lastTankErrorCode = 0;
     lastUltrasonicDistanceCm = distance;
     return distance;
@@ -650,10 +666,10 @@ void updateTankLevel() {
             state.tankDistance = lastTankGoodDistanceCm;
             // Keep liters/percent as-is (based on last good distance)
         } else {
-            state.tankSensorAvailable = false;
-            state.tankDistance = -1.0;
-            state.tankLiters = 0.0;
-            state.tankPercent = 0;
+        state.tankSensorAvailable = false;
+        state.tankDistance = -1.0;
+        state.tankLiters = 0.0;
+        state.tankPercent = 0;
         }
         return;
     }
@@ -678,7 +694,7 @@ void updateTankLevel() {
         state.tankLiters = 0.0f;
         return;
     }
-
+    
     // Calculate percentage
     state.tankPercent = (int)((fillHeight / state.tankHeight) * 100.0);
     
@@ -1311,6 +1327,523 @@ void loadSwitchEvents() {
     prefs.end();
 }
 
+// ========== MYSQL INTEGRATION (OPTIONAL) ==========
+bool checkMySQLConnection() {
+    if (strlen(MYSQL_API_URL) == 0) {
+        state.mysqlConnected = false;
+        return false;
+    }
+    
+    if (WiFi.status() != WL_CONNECTED) {
+        state.mysqlConnected = false;
+        return false;
+    }
+    
+    HTTPClient http;
+    String url = String(MYSQL_API_URL) + "/health";
+    
+    if (!http.begin(url)) {
+        state.mysqlConnected = false;
+        return false;
+    }
+    
+    http.setTimeout(3000);
+    int httpCode = http.GET();
+    http.end();
+    
+    bool connected = (httpCode == HTTP_CODE_OK);
+    state.mysqlConnected = connected;
+    state.lastMySQLCheck = millis();
+    
+    if (!connected) {
+        Serial.printf("[MySQL] Connection check failed: HTTP %d\n", httpCode);
+    }
+    
+    return connected;
+}
+
+bool saveSwitchEventToMySQL(const SwitchEvent& evt) {
+    if (strlen(MYSQL_API_URL) == 0) {
+        return false; // MySQL API disabled
+    }
+    
+    if (!checkMySQLConnection()) {
+        return false;
+    }
+    
+    HTTPClient http;
+    String url = String(MYSQL_API_URL) + "/events";
+    
+    if (!http.begin(url)) {
+        return false; // Failed to begin HTTP connection
+    }
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(3000);
+    
+    // Build JSON payload
+    StaticJsonDocument<256> doc;
+    struct tm timeinfo;
+    if (evt.timestamp > 0) {
+        // Convert Unix timestamp to MySQL DATETIME format
+        time_t timestamp = (time_t)evt.timestamp;
+        struct tm* timeinfoPtr = localtime(&timestamp);
+        if (timeinfoPtr != nullptr) {
+            memcpy(&timeinfo, timeinfoPtr, sizeof(struct tm));
+            char timestampStr[32];
+            sprintf(timestampStr, "%04d-%02d-%02d %02d:%02d:%02d",
+                    timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                    timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+            doc["timestamp"] = timestampStr;
+        } else {
+            // Conversion failed, skip
+            http.end();
+            return false;
+        }
+    } else {
+        // No valid timestamp, skip
+        http.end();
+        return false;
+    }
+    doc["is_on"] = evt.isOn ? 1 : 0;
+    if (!isnan(evt.tempVorlauf)) {
+        doc["temp_vorlauf"] = round(evt.tempVorlauf * 10) / 10.0;
+    }
+    if (!isnan(evt.tempRuecklauf)) {
+        doc["temp_ruecklauf"] = round(evt.tempRuecklauf * 10) / 10.0;
+    }
+    if (!isnan(evt.tankLiters)) {
+        doc["tank_liters"] = round(evt.tankLiters * 10) / 10.0;
+    }
+    
+    String json;
+    serializeJson(doc, json);
+    
+    int httpCode = http.POST(json);
+    bool success = (httpCode == HTTP_CODE_OK || httpCode == 200);
+    
+    if (!success) {
+        Serial.printf("[MySQL] Failed to save switch event: HTTP %d\n", httpCode);
+    }
+    
+    http.end();
+    return success;
+}
+
+bool saveDailyStatsToMySQL() {
+    if (strlen(MYSQL_API_URL) == 0) {
+        return false; // MySQL API disabled
+    }
+    
+    if (WiFi.status() != WL_CONNECTED) {
+        return false; // No WiFi connection
+    }
+    
+    // Get current date
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo, 100)) {
+        return false; // No NTP sync
+    }
+    
+    // Calculate today's statistics (same logic as in /api/stats-history)
+    unsigned long todayOnSeconds = 0;
+    unsigned long todayOffSeconds = 0;
+    float sumVorlauf = 0.0;
+    float sumRuecklauf = 0.0;
+    float minVorlauf = NAN;
+    float maxVorlauf = NAN;
+    float minRuecklauf = NAN;
+    float maxRuecklauf = NAN;
+    int sampleCount = 0;
+    
+    // Get today's timestamp at 00:00:00
+    struct tm todayStart = timeinfo;
+    todayStart.tm_hour = 0;
+    todayStart.tm_min = 0;
+    todayStart.tm_sec = 0;
+    unsigned long todayStartTimestamp = mktime(&todayStart);
+    
+    // Get yesterday's timestamp at 00:00:00 (for events that started yesterday but ended today)
+    struct tm yesterdayStart = timeinfo;
+    yesterdayStart.tm_hour = 0;
+    yesterdayStart.tm_min = 0;
+    yesterdayStart.tm_sec = 0;
+    time_t yesterdayTime = mktime(&yesterdayStart);
+    yesterdayTime -= 86400; // 24 hours in seconds
+    unsigned long yesterdayStartTimestamp = (unsigned long)yesterdayTime;
+    
+    // Collect today's events (simplified version - limit to prevent stack overflow)
+    const int MAX_TODAY_EVENTS = 20;
+    struct EventWithIndex {
+        const SwitchEvent* evt;
+        unsigned long sortKey;
+    };
+    EventWithIndex todayEvents[MAX_TODAY_EVENTS];
+    int todayEventCount = 0;
+    
+    for (int i = 0; i < MAX_SWITCH_EVENTS && todayEventCount < MAX_TODAY_EVENTS; ++i) {
+        int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
+        const SwitchEvent& evt = switchEvents[idx];
+        if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
+        
+        bool isRelevant = false;
+        if (evt.timestamp > 0) {
+            isRelevant = (evt.timestamp >= yesterdayStartTimestamp && evt.timestamp < (todayStartTimestamp + 86400));
+        } else if (evt.uptimeMs > 0) {
+            unsigned long currentUptime = millis();
+            if (evt.uptimeMs <= currentUptime && (currentUptime - evt.uptimeMs) < 172800000) {
+                isRelevant = true;
+            }
+        }
+        
+        if (!isRelevant) continue;
+        
+        todayEvents[todayEventCount].evt = &evt;
+        todayEvents[todayEventCount].sortKey = evt.timestamp > 0 ? evt.timestamp : evt.uptimeMs;
+        todayEventCount++;
+    }
+    
+    // Sort events chronologically
+    for (int i = 0; i < todayEventCount - 1; ++i) {
+        for (int j = i + 1; j < todayEventCount; ++j) {
+            if (todayEvents[i].sortKey > todayEvents[j].sortKey) {
+                EventWithIndex temp = todayEvents[i];
+                todayEvents[i] = todayEvents[j];
+                todayEvents[j] = temp;
+            }
+        }
+    }
+    
+    // Calculate on/off times and temperatures
+    unsigned long lastOnTime = 0;
+    bool lastWasOn = false;
+    
+    for (int i = 0; i < todayEventCount; ++i) {
+        const SwitchEvent& evt = *todayEvents[i].evt;
+        unsigned long eventTime = evt.timestamp > 0 ? evt.timestamp : (evt.uptimeMs / 1000);
+        
+        if (evt.timestamp > 0 && evt.timestamp < todayStartTimestamp && evt.isOn) {
+            lastOnTime = todayStartTimestamp;
+            lastWasOn = true;
+            continue;
+        }
+        
+        if (evt.isOn) {
+            lastOnTime = eventTime;
+            lastWasOn = true;
+        } else {
+            if (lastWasOn && lastOnTime > 0) {
+                unsigned long duration = eventTime - lastOnTime;
+                if (eventTime >= todayStartTimestamp) {
+                    if (lastOnTime < todayStartTimestamp) {
+                        todayOnSeconds += (eventTime - todayStartTimestamp);
+                    } else {
+                        todayOnSeconds += duration;
+                    }
+                }
+            } else if (!lastWasOn && lastOnTime > 0) {
+                unsigned long duration = eventTime - lastOnTime;
+                if (eventTime >= todayStartTimestamp) {
+                    if (lastOnTime < todayStartTimestamp) {
+                        todayOffSeconds += (eventTime - todayStartTimestamp);
+                    } else {
+                        todayOffSeconds += duration;
+                    }
+                }
+            }
+            lastOnTime = eventTime;
+            lastWasOn = false;
+        }
+        
+        // Track temperatures from OFF events (completed cycles)
+        if (!evt.isOn && !isnan(evt.tempVorlauf)) {
+            sumVorlauf += evt.tempVorlauf;
+            if (isnan(minVorlauf) || evt.tempVorlauf < minVorlauf) minVorlauf = evt.tempVorlauf;
+            if (isnan(maxVorlauf) || evt.tempVorlauf > maxVorlauf) maxVorlauf = evt.tempVorlauf;
+            sampleCount++;
+        }
+        if (!evt.isOn && !isnan(evt.tempRuecklauf)) {
+            sumRuecklauf += evt.tempRuecklauf;
+            if (isnan(minRuecklauf) || evt.tempRuecklauf < minRuecklauf) minRuecklauf = evt.tempRuecklauf;
+            if (isnan(maxRuecklauf) || evt.tempRuecklauf > maxRuecklauf) maxRuecklauf = evt.tempRuecklauf;
+        }
+    }
+    
+    // If currently ON, add time from last ON event to now
+    // Also include current temperatures in average calculation if heating is running
+    if (lastWasOn && state.heatingOn && lastOnTime > 0) {
+        unsigned long currentTime = mktime(&timeinfo);
+        if (currentTime > lastOnTime) {
+            unsigned long duration = currentTime - lastOnTime;
+            todayOnSeconds += duration;
+            
+            // Include current temperatures in average (for ongoing heating cycle)
+            if (!isnan(state.tempVorlauf)) {
+                sumVorlauf += state.tempVorlauf;
+                if (isnan(minVorlauf) || state.tempVorlauf < minVorlauf) minVorlauf = state.tempVorlauf;
+                if (isnan(maxVorlauf) || state.tempVorlauf > maxVorlauf) maxVorlauf = state.tempVorlauf;
+                sampleCount++;
+            }
+            if (!isnan(state.tempRuecklauf)) {
+                sumRuecklauf += state.tempRuecklauf;
+                if (isnan(minRuecklauf) || state.tempRuecklauf < minRuecklauf) minRuecklauf = state.tempRuecklauf;
+                if (isnan(maxRuecklauf) || state.tempRuecklauf > maxRuecklauf) maxRuecklauf = state.tempRuecklauf;
+            }
+        }
+    }
+    
+    // Use calculated values or fallback to stats
+    unsigned long finalOnSeconds = todayOnSeconds > 0 ? todayOnSeconds : stats.onTimeSeconds;
+    unsigned long finalOffSeconds = todayOffSeconds > 0 ? todayOffSeconds : stats.offTimeSeconds;
+    
+    // Calculate diesel consumption
+    float todayDieselLiters = (finalOnSeconds / 3600.0) * state.dieselConsumptionPerHour;
+    
+    // Build JSON payload for PHP API
+    HTTPClient http;
+    String url = String(MYSQL_API_URL) + "/stats/daily";
+    
+    Serial.printf("[MySQL] Connecting to: %s\n", url.c_str());
+    
+    if (!http.begin(url)) {
+        Serial.println("[MySQL] ❌ Failed to begin HTTP connection");
+        return false;
+    }
+    
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(5000); // 5 seconds timeout
+    http.setReuse(false);
+    
+    StaticJsonDocument<512> doc;
+    char dateKey[11];
+    sprintf(dateKey, "%04d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+    
+    // Build JSON exactly as PHP API expects
+    doc["date_key"] = dateKey;
+    doc["switches"] = (int)stats.todaySwitches;
+    doc["on_seconds"] = (int)finalOnSeconds;
+    doc["off_seconds"] = (int)finalOffSeconds;
+    doc["diesel_liters"] = round(todayDieselLiters * 10) / 10.0;
+    doc["samples"] = sampleCount > 0 ? sampleCount : 1;
+    
+    // Set temperature statistics (as expected by PHP API)
+    if (sampleCount > 0) {
+        doc["avg_vorlauf"] = round((sumVorlauf / sampleCount) * 10) / 10.0;
+        doc["avg_ruecklauf"] = round((sumRuecklauf / sampleCount) * 10) / 10.0;
+        doc["min_vorlauf"] = round(minVorlauf * 10) / 10.0;
+        doc["max_vorlauf"] = round(maxVorlauf * 10) / 10.0;
+        doc["min_ruecklauf"] = round(minRuecklauf * 10) / 10.0;
+        doc["max_ruecklauf"] = round(maxRuecklauf * 10) / 10.0;
+    } else {
+        // No temperature data - set to null (PHP API expects null for missing values)
+        doc["avg_vorlauf"] = nullptr;
+        doc["avg_ruecklauf"] = nullptr;
+        doc["min_vorlauf"] = nullptr;
+        doc["max_vorlauf"] = nullptr;
+        doc["min_ruecklauf"] = nullptr;
+        doc["max_ruecklauf"] = nullptr;
+    }
+    
+    String json;
+    serializeJson(doc, json);
+    
+    Serial.printf("[MySQL] POST Request to: %s\n", url.c_str());
+    Serial.printf("[MySQL] JSON Payload: %s\n", json.c_str());
+    
+    int httpCode = http.POST(json);
+    String response = http.getString();
+    
+    bool success = (httpCode == HTTP_CODE_OK || httpCode == 200);
+    
+    if (!success) {
+        Serial.printf("[MySQL] ❌ HTTP Error %d\n", httpCode);
+        Serial.printf("[MySQL] Response: %s\n", response.c_str());
+    } else {
+        Serial.printf("[MySQL] ✅ Success! HTTP %d\n", httpCode);
+        Serial.printf("[MySQL] Response: %s\n", response.c_str());
+    }
+    
+    http.end();
+    return success;
+}
+
+bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
+    // Safety checks
+    if (strlen(MYSQL_API_URL) == 0) {
+        return false; // MySQL API disabled
+    }
+    
+    if (WiFi.status() != WL_CONNECTED) {
+        return false; // No WiFi connection
+    }
+    
+    // Limit total time for all MySQL requests to prevent hanging
+    unsigned long startTime = millis();
+    const unsigned long MAX_MYSQL_TIME_MS = 4000; // Max 4 seconds total
+    
+    bool hasTodayData = false;
+    String baseUrl = String(MYSQL_API_URL);
+    
+    // Fetch today's data - use separate HTTPClient for each request
+    {
+        HTTPClient http;
+        String todayUrl = baseUrl + "/stats/today";
+        if (!http.begin(todayUrl)) {
+            return false; // Failed to begin HTTP connection
+        }
+        http.setTimeout(1500);
+        http.setConnectTimeout(1000);
+        http.setReuse(false);
+        
+        int httpCode = http.GET();
+        
+        if (httpCode == HTTP_CODE_OK) {
+            String payload = http.getString();
+            http.end();
+            
+            StaticJsonDocument<512> todayDoc;
+            DeserializationError error = deserializeJson(todayDoc, payload);
+            
+            if (!error && todayDoc.containsKey("date_key")) {
+                // Found today's data in MySQL
+                JsonObject today = doc.createNestedObject("today");
+                // Convert dateKey from YYYY-MM-DD to YYYYMMDD format
+                String mysqlDateKey = todayDoc["date_key"].as<String>();
+                mysqlDateKey.replace("-", "");
+                today["dateKey"] = mysqlDateKey;
+                today["switches"] = todayDoc["switches"];
+                today["onSeconds"] = todayDoc["on_seconds"];
+                today["offSeconds"] = todayDoc["off_seconds"];
+                today["dieselLiters"] = todayDoc["diesel_liters"];
+                if (todayDoc.containsKey("avg_vorlauf") && !todayDoc["avg_vorlauf"].isNull()) {
+                    today["avgVorlauf"] = todayDoc["avg_vorlauf"];
+                }
+                if (todayDoc.containsKey("avg_ruecklauf") && !todayDoc["avg_ruecklauf"].isNull()) {
+                    today["avgRuecklauf"] = todayDoc["avg_ruecklauf"];
+                }
+                if (todayDoc.containsKey("min_vorlauf") && !todayDoc["min_vorlauf"].isNull()) {
+                    today["minVorlauf"] = todayDoc["min_vorlauf"];
+                }
+                if (todayDoc.containsKey("max_vorlauf") && !todayDoc["max_vorlauf"].isNull()) {
+                    today["maxVorlauf"] = todayDoc["max_vorlauf"];
+                }
+                if (todayDoc.containsKey("min_ruecklauf") && !todayDoc["min_ruecklauf"].isNull()) {
+                    today["minRuecklauf"] = todayDoc["min_ruecklauf"];
+                }
+                if (todayDoc.containsKey("max_ruecklauf") && !todayDoc["max_ruecklauf"].isNull()) {
+                    today["maxRuecklauf"] = todayDoc["max_ruecklauf"];
+                }
+                today["samples"] = todayDoc["samples"];
+                hasTodayData = true;
+            }
+        } else {
+            http.end();
+        }
+    } // HTTPClient destroyed here
+    
+    // Check timeout before historical days request
+    if (millis() - startTime > MAX_MYSQL_TIME_MS) {
+        return hasTodayData;
+    }
+    
+    // Fetch historical days - use separate HTTPClient
+    {
+        HTTPClient http;
+        String daysUrl = baseUrl + "/stats/days?days=14";
+        if (http.begin(daysUrl)) {
+            http.setTimeout(1500);
+            http.setConnectTimeout(1000);
+            http.setReuse(false);
+            
+            int httpCode = http.GET();
+            
+            if (httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
+                http.end();
+                
+                StaticJsonDocument<4096> daysDoc; // Reduced size
+                DeserializationError error = deserializeJson(daysDoc, payload);
+                
+                if (!error && daysDoc.is<JsonArray>()) {
+                    JsonArray daysArray = doc.createNestedArray("days");
+                    JsonArray mysqlDays = daysDoc.as<JsonArray>();
+                    for (JsonObject day : mysqlDays) {
+                        JsonObject dayObj = daysArray.createNestedObject();
+                        // Convert dateKey from YYYY-MM-DD to YYYYMMDD format
+                        String mysqlDateKey = day["date_key"].as<String>();
+                        mysqlDateKey.replace("-", "");
+                        dayObj["dateKey"] = mysqlDateKey;
+                        dayObj["switches"] = day["switches"];
+                        dayObj["onSeconds"] = day["on_seconds"];
+                        dayObj["offSeconds"] = day["off_seconds"];
+                        dayObj["dieselLiters"] = day["diesel_liters"];
+                        if (day.containsKey("avg_vorlauf") && !day["avg_vorlauf"].isNull()) {
+                            dayObj["avgVorlauf"] = day["avg_vorlauf"];
+                        }
+                        if (day.containsKey("avg_ruecklauf") && !day["avg_ruecklauf"].isNull()) {
+                            dayObj["avgRuecklauf"] = day["avg_ruecklauf"];
+                        }
+                        dayObj["samples"] = day["samples"];
+                    }
+                }
+            } else {
+                http.end();
+            }
+        }
+    } // HTTPClient destroyed here
+    
+    // Check timeout before events request
+    if (millis() - startTime > MAX_MYSQL_TIME_MS) {
+        return hasTodayData;
+    }
+    
+    // Fetch switch events - use separate HTTPClient
+    {
+        HTTPClient http;
+        String eventsUrl = baseUrl + "/events/recent?limit=20";  // Further reduced limit
+        if (http.begin(eventsUrl)) {
+            http.setTimeout(1500);
+            http.setConnectTimeout(1000);
+            http.setReuse(false);
+            
+            int httpCode = http.GET();
+            
+            if (httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
+                http.end();
+                
+                StaticJsonDocument<3072> eventsDoc; // Reduced size
+                DeserializationError error = deserializeJson(eventsDoc, payload);
+                
+                if (!error && eventsDoc.is<JsonArray>()) {
+                    JsonArray eventsArray = doc.createNestedArray("switchEvents");
+                    JsonArray mysqlEvents = eventsDoc.as<JsonArray>();
+                    for (JsonObject event : mysqlEvents) {
+                        JsonObject eventObj = eventsArray.createNestedObject();
+                        if (event.containsKey("timestamp_unix")) {
+                            eventObj["timestamp"] = event["timestamp_unix"];
+                        }
+                        eventObj["isOn"] = event["is_on"].as<int>() == 1;
+                        if (event.containsKey("temp_vorlauf") && !event["temp_vorlauf"].isNull()) {
+                            eventObj["tempVorlauf"] = event["temp_vorlauf"];
+                        }
+                        if (event.containsKey("temp_ruecklauf") && !event["temp_ruecklauf"].isNull()) {
+                            eventObj["tempRuecklauf"] = event["temp_ruecklauf"];
+                        }
+                        if (event.containsKey("tank_liters") && !event["tank_liters"].isNull()) {
+                            eventObj["tankLiters"] = event["tank_liters"];
+                        }
+                    }
+                }
+            } else {
+                http.end();
+            }
+        }
+    } // HTTPClient destroyed here
+    
+    // Return true if we got today's data, false otherwise (will trigger fallback)
+    return hasTodayData;
+}
+
 // Load relay configuration early in setup, before configuring GPIO directions.
 // This reduces the time the relay input might be left in a wrong state after a reset.
 void loadRelayConfigEarly() {
@@ -1778,7 +2311,7 @@ void setupWebServer() {
         serialLog(state.pumpOn ? "ON" : "OFF");
         serialLog(" to ");
         serialLogLn(newPumpState ? "ON" : "OFF");
-
+        
         // IMPORTANT: Set manual override flag BEFORE switching the GPIO.
         // The main loop can run concurrently and cooldown logic may otherwise turn the pump OFF immediately.
         state.pumpManualMode = newPumpState;
@@ -2176,9 +2709,20 @@ void setupWebServer() {
     // API: Stats history (no authentication required)
     server.on("/api/stats-history", HTTP_GET, [](AsyncWebServerRequest *request) {
         
-        StaticJsonDocument<8192> doc;  // Increased for switch events
+        // Use smaller document to prevent stack overflow
+        StaticJsonDocument<8192> doc;  // Reduced from 16384 to prevent crashes
         
-        // Return current statistics for aggregation
+        // Try to fetch from MySQL (with safety checks)
+        bool mysqlSuccess = false;
+        if (strlen(MYSQL_API_URL) > 0 && WiFi.status() == WL_CONNECTED) {
+            // Try MySQL fetch with timeout protection
+            mysqlSuccess = fetchMySQLStats(doc);
+            doc["mysqlAvailable"] = state.mysqlConnected;
+        } else {
+            doc["mysqlAvailable"] = false;
+        }
+        
+        // Return current statistics for aggregation (always from local stats)
         doc["switchCount"] = stats.switchCount;
         doc["todaySwitches"] = stats.todaySwitches;
         doc["onTimeSeconds"] = stats.onTimeSeconds;
@@ -2188,8 +2732,10 @@ void setupWebServer() {
         float totalDieselLiters = (stats.onTimeSeconds / 3600.0) * state.dieselConsumptionPerHour;
         doc["totalDieselLiters"] = round(totalDieselLiters * 10) / 10.0;
         
-        // Today's data object
-        JsonObject today = doc.createNestedObject("today");
+        // If MySQL fetch failed, fall back to local calculation
+        if (!mysqlSuccess || !doc.containsKey("today")) {
+            // Today's data object
+            JsonObject today = doc.createNestedObject("today");
         struct tm timeinfo;
         if (getLocalTime(&timeinfo, 100)) {
             char dateKey[9];
@@ -2228,15 +2774,19 @@ void setupWebServer() {
             unsigned long yesterdayStartTimestamp = (unsigned long)yesterdayTime;
             
             // Collect and sort today's events chronologically (including events from yesterday that affect today)
+            // Use smaller array to prevent stack overflow
+            const int MAX_TODAY_EVENTS = 20; // Limit to prevent stack overflow
             struct EventWithIndex {
                 const SwitchEvent* evt;
                 int originalIdx;
                 unsigned long sortKey; // timestamp or uptimeMs for sorting
             };
-            EventWithIndex todayEvents[MAX_SWITCH_EVENTS];
+            EventWithIndex todayEvents[MAX_TODAY_EVENTS];
             int todayEventCount = 0;
             
-            for (int i = 0; i < MAX_SWITCH_EVENTS; ++i) {
+            // Limit iteration to prevent timeout
+            int maxIterations = MAX_SWITCH_EVENTS < MAX_TODAY_EVENTS ? MAX_SWITCH_EVENTS : MAX_TODAY_EVENTS;
+            for (int i = 0; i < MAX_SWITCH_EVENTS && todayEventCount < MAX_TODAY_EVENTS; ++i) {
                 int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
                 const SwitchEvent& evt = switchEvents[idx];
                 if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
@@ -2408,47 +2958,65 @@ void setupWebServer() {
             today["avgRuecklauf"] = nullptr;
             today["samples"] = 0;
         }
+        }
         
-        // Historical days array (empty for now - future: NVS ring buffer with daily aggregated data)
-        JsonArray daysArray = doc.createNestedArray("days");
+        // If MySQL didn't provide days array, create empty one
+        if (!doc.containsKey("days")) {
+            JsonArray daysArray = doc.createNestedArray("days");
+        }
         
-        // Switch events array (last 50 events with temperatures)
-        JsonArray eventsArray = doc.createNestedArray("switchEvents");
-        // Start from oldest event (after current index) and wrap around
-        for (int i = 0; i < MAX_SWITCH_EVENTS; ++i) {
-            int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
-            const SwitchEvent& evt = switchEvents[idx];
-            // Skip empty entries (timestamp == 0 and uptimeMs == 0 means never written)
-            if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
-            
-            JsonObject eventObj = eventsArray.createNestedObject();
-            if (evt.timestamp > 0) {
-                eventObj["timestamp"] = evt.timestamp;
-            } else {
-                eventObj["timestamp"] = nullptr;
-            }
-            eventObj["isOn"] = evt.isOn;
-            eventObj["uptimeMs"] = evt.uptimeMs;
-            if (!isnan(evt.tempVorlauf)) {
-                eventObj["tempVorlauf"] = round(evt.tempVorlauf * 10) / 10.0;
-            } else {
-                eventObj["tempVorlauf"] = nullptr;
-            }
-            if (!isnan(evt.tempRuecklauf)) {
-                eventObj["tempRuecklauf"] = round(evt.tempRuecklauf * 10) / 10.0;
-            } else {
-                eventObj["tempRuecklauf"] = nullptr;
-            }
-            if (!isnan(evt.tankLiters)) {
-                eventObj["tankLiters"] = round(evt.tankLiters * 10) / 10.0;
-            } else {
-                eventObj["tankLiters"] = nullptr;
+        // If MySQL didn't provide switch events, use local events
+        // Limit to prevent JSON document overflow
+        if (!doc.containsKey("switchEvents")) {
+            JsonArray eventsArray = doc.createNestedArray("switchEvents");
+            // Start from oldest event (after current index) and wrap around
+            // Limit to last 30 events to prevent document overflow
+            const int MAX_EVENTS_TO_SEND = 30;
+            int eventCount = 0;
+            for (int i = 0; i < MAX_SWITCH_EVENTS && eventCount < MAX_EVENTS_TO_SEND; ++i) {
+                int idx = (switchEventIndex + i) % MAX_SWITCH_EVENTS;
+                const SwitchEvent& evt = switchEvents[idx];
+                // Skip empty entries (timestamp == 0 and uptimeMs == 0 means never written)
+                if (evt.timestamp == 0 && evt.uptimeMs == 0) continue;
+                
+                JsonObject eventObj = eventsArray.createNestedObject();
+                if (evt.timestamp > 0) {
+                    eventObj["timestamp"] = evt.timestamp;
+                } else {
+                    eventObj["timestamp"] = nullptr;
+                }
+                eventObj["isOn"] = evt.isOn;
+                eventObj["uptimeMs"] = evt.uptimeMs;
+                if (!isnan(evt.tempVorlauf)) {
+                    eventObj["tempVorlauf"] = round(evt.tempVorlauf * 10) / 10.0;
+                } else {
+                    eventObj["tempVorlauf"] = nullptr;
+                }
+                if (!isnan(evt.tempRuecklauf)) {
+                    eventObj["tempRuecklauf"] = round(evt.tempRuecklauf * 10) / 10.0;
+                } else {
+                    eventObj["tempRuecklauf"] = nullptr;
+                }
+                if (!isnan(evt.tankLiters)) {
+                    eventObj["tankLiters"] = round(evt.tankLiters * 10) / 10.0;
+                } else {
+                    eventObj["tankLiters"] = nullptr;
+                }
+                eventCount++;
             }
         }
         
+        // Serialize JSON with safety check
         String json;
-        serializeJson(doc, json);
-        request->send(200, "application/json", json);
+        size_t jsonSize = measureJson(doc);
+        if (jsonSize > 0 && jsonSize < 8000) { // Safety check to prevent overflow
+            serializeJson(doc, json);
+            request->send(200, "application/json", json);
+        } else {
+            // Fallback: send minimal response if JSON is too large
+            serialLogF("[Stats] JSON too large: %d bytes, sending error\n", jsonSize);
+            request->send(500, "application/json", "{\"error\":\"JSON too large\"}");
+        }
     });
     
     // API: Update location
@@ -2713,7 +3281,7 @@ void setup() {
     }
     
     bootTime = millis();
-
+    
     // Load relay configuration early (before setting GPIO directions)
     loadRelayConfigEarly();
 
@@ -2959,6 +3527,15 @@ void loop() {
     if (now - lastTankRead >= TANK_READ_INTERVAL) {
         lastTankRead = now;
         updateTankLevel();
+    }
+    
+    // Save daily stats to MySQL every 5 minutes (if MySQL is enabled)
+    static unsigned long lastDailyStatsSave = 0;
+    if (strlen(MYSQL_API_URL) > 0 && WiFi.status() == WL_CONNECTED) {
+        if (now - lastDailyStatsSave >= 300000) { // 5 minutes
+            saveDailyStatsToMySQL();
+            lastDailyStatsSave = now;
+        }
     }
     
     // WiFi reconnect logic - but NOT during OTA update or scheduled reboot

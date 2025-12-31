@@ -2011,21 +2011,66 @@ async function refreshStatsModal() {
         showToast('⚠️ Demo-Modus: Statistik-History ist nur auf dem ESP32 verfügbar', 'warning', 3000);
         return;
     }
+    
+    // Show loading indicator
+    const loadingEl = document.getElementById('statsModalLoading');
+    const daysListEl = document.getElementById('statsModalDaysList');
+    const eventsEl = document.getElementById('statsModalSwitchEvents');
+    
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (daysListEl) daysListEl.style.display = 'none';
+    if (eventsEl) eventsEl.style.display = 'none';
+    
     try {
         const res = await fetch('/api/stats-history');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         window.__lastStatsHistory = data;
+        
+        // Hide loading, show content
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (daysListEl) daysListEl.style.display = 'block';
+        if (eventsEl) eventsEl.style.display = 'block';
+        
         renderStatsModal(data);
+        
+        // Show warning toast if MySQL is not available
+        if (data.mysqlAvailable === false) {
+            showToast('⚠️ MySQL-Verbindung nicht verfügbar. Zeige lokale Daten.', 'warning', 4000);
+        }
     } catch (e) {
         console.error('stats-history failed:', e);
+        
+        // Hide loading on error
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (daysListEl) daysListEl.style.display = 'block';
+        if (eventsEl) eventsEl.style.display = 'block';
+        
         showToast('Fehler beim Laden der Statistik-History', 'error');
+        
+        // Try to render with cached data if available
+        if (window.__lastStatsHistory) {
+            renderStatsModal(window.__lastStatsHistory);
+        } else {
+            // Show MySQL warning even on error if we have no cached data
+            const mysqlWarningEl = document.getElementById('statsModalMySQLWarning');
+            if (mysqlWarningEl) {
+                mysqlWarningEl.style.display = 'block';
+            }
+        }
     }
 }
 
 function renderStatsModal(data) {
     const summaryEl = document.getElementById('statsModalSummary');
     if (!summaryEl) return;
+    
+    // Show/hide MySQL warning
+    const mysqlWarningEl = document.getElementById('statsModalMySQLWarning');
+    if (mysqlWarningEl) {
+        const mysqlAvailable = data.mysqlAvailable !== undefined ? data.mysqlAvailable : true;
+        mysqlWarningEl.style.display = mysqlAvailable ? 'none' : 'block';
+    }
 
     const rangeSelect = document.getElementById('statsRangeSelect');
     const rangeDays = rangeSelect ? parseInt(rangeSelect.value, 10) : 14;
@@ -2047,7 +2092,6 @@ function renderStatsModal(data) {
         switches: 0,
         onSeconds: 0,
         offSeconds: 0,
-        samples: 0,
         sumVorlauf10: 0,
         sumRuecklauf10: 0,
         minVorlauf: null,
@@ -2065,11 +2109,16 @@ function renderStatsModal(data) {
         agg.switches += Number(r.switches || 0);
         agg.onSeconds += Number(r.onSeconds || 0);
         agg.offSeconds += Number(r.offSeconds || 0);
-        const s = Number(r.samples || 0);
-        if (s > 0) {
-            agg.samples += s;
-            agg.sumVorlauf10 += Number(r.sumVorlauf10 || 0);
-            agg.sumRuecklauf10 += Number(r.sumRuecklauf10 || 0);
+        // Aggregate temperature data (if available)
+        // MySQL returns temperatures as strings, so we need to parse them
+        const avgVorlaufVal = r.avgVorlauf !== null && r.avgVorlauf !== undefined ? parseFloat(r.avgVorlauf) : null;
+        const avgRuecklaufVal = r.avgRuecklauf !== null && r.avgRuecklauf !== undefined ? parseFloat(r.avgRuecklauf) : null;
+        
+        if (avgVorlaufVal !== null && !isNaN(avgVorlaufVal)) {
+            agg.sumVorlauf10 += avgVorlaufVal * 10;
+        }
+        if (avgRuecklaufVal !== null && !isNaN(avgRuecklaufVal)) {
+            agg.sumRuecklauf10 += avgRuecklaufVal * 10;
         }
         updateMinMax('minVorlauf', 'maxVorlauf', r.minVorlauf);
         updateMinMax('minVorlauf', 'maxVorlauf', r.maxVorlauf);
@@ -2077,8 +2126,18 @@ function renderStatsModal(data) {
         updateMinMax('minRuecklauf', 'maxRuecklauf', r.maxRuecklauf);
     }
 
-    const avgVorlauf = (agg.samples > 0) ? (agg.sumVorlauf10 / (10 * agg.samples)) : null;
-    const avgRuecklauf = (agg.samples > 0) ? (agg.sumRuecklauf10 / (10 * agg.samples)) : null;
+    // Calculate averages (divide by number of days with data)
+    const daysWithVorlauf = slice.filter(r => {
+        const val = r.avgVorlauf !== null && r.avgVorlauf !== undefined ? parseFloat(r.avgVorlauf) : null;
+        return val !== null && !isNaN(val) && val > 0;
+    }).length;
+    const daysWithRuecklauf = slice.filter(r => {
+        const val = r.avgRuecklauf !== null && r.avgRuecklauf !== undefined ? parseFloat(r.avgRuecklauf) : null;
+        return val !== null && !isNaN(val) && val > 0;
+    }).length;
+    
+    const avgVorlauf = (daysWithVorlauf > 0 && agg.sumVorlauf10 > 0) ? (agg.sumVorlauf10 / (10 * daysWithVorlauf)) : null;
+    const avgRuecklauf = (daysWithRuecklauf > 0 && agg.sumRuecklauf10 > 0) ? (agg.sumRuecklauf10 / (10 * daysWithRuecklauf)) : null;
 
     const weeklyLabel = (rangeDays === 7) ? '7 Tage' : '14 Tage';
     summaryEl.innerHTML = `
@@ -2097,7 +2156,6 @@ function renderStatsModal(data) {
         <div style="grid-column: 1 / -1; border:1px solid var(--border); border-radius:10px; padding:10px; background: rgba(255,255,255,0.04);">
             <div style="display:flex; justify-content: space-between; gap: 10px; align-items: baseline;">
                 <div style="font-size:11px; color: var(--muted);">Übersicht (${weeklyLabel})</div>
-                <div style="font-size:11px; color: var(--muted);">Samples: ${agg.samples}</div>
             </div>
             <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px;">
                 <div><div style="font-size:11px; color: var(--muted);">Schaltungen</div><div style="font-weight:800; color: var(--text);">${agg.switches}x</div></div>
@@ -2117,14 +2175,20 @@ function renderStatsModal(data) {
         </div>
     `;
 
-    // Render daily values as cards
+    // Render daily values as cards (scrollable list)
     const daysListEl = document.getElementById('statsModalDaysList');
     if (daysListEl) {
-        const displayRows = rows.slice(0, Math.max(1, Math.min(rangeDays, 14)));
+        // Filter: Only show days with actual data (switches > 0 OR onSeconds > 0)
+        const displayRows = rows.filter(r => {
+            const hasSwitches = (r.switches ?? 0) > 0;
+            const hasOnTime = (r.onSeconds ?? 0) > 0;
+            return hasSwitches || hasOnTime;
+        });
+        
         if (displayRows.length > 0) {
             daysListEl.innerHTML = `
                 <div style="font-weight: 700; color: var(--text); margin-bottom: 10px;">Tageswerte</div>
-                <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                <div style="display: flex; flex-direction: column; gap: 8px;">
                     ${displayRows.map((r) => {
                 const date = formatDateKey(r.dateKey);
                 const sw = r.switches ?? 0;
@@ -2133,26 +2197,26 @@ function renderStatsModal(data) {
                 const ar = (r.avgRuecklauf === null || r.avgRuecklauf === undefined) ? '—' : `${Number(r.avgRuecklauf).toFixed(1)}°C`;
                 const todayLabel = r._today ? ' <span style="font-size: 10px; color: var(--muted);">(heute)</span>' : '';
                 return `
-                            <div style="border:1px solid var(--border); border-radius:8px; padding:10px; background: rgba(255,255,255,0.04);">
-                                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <div style="font-weight: 600; color: var(--text);">${date}${todayLabel}</div>
-                                    <div style="font-size: 12px; color: var(--text);">${sw}x</div>
+                            <div style="border:1px solid var(--border); border-radius:8px; padding:12px; background: rgba(255,255,255,0.04); flex-shrink: 0;">
+                                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <div style="font-weight: 600; color: var(--text); font-size: 14px;">${date}${todayLabel}</div>
+                                    <div style="font-size: 12px; color: var(--text); font-weight: 600;">${sw}x</div>
                                 </div>
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px;">
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 12px;">
                                     <div>
-                                        <div style="color: var(--muted);">ON Zeit</div>
+                                        <div style="color: var(--muted); font-size: 11px; margin-bottom: 4px;">ON Zeit</div>
                                         <div style="color: var(--text); font-weight: 600;">${on}</div>
                                     </div>
                                     <div>
-                                        <div style="color: var(--muted);">Diesel</div>
+                                        <div style="color: var(--muted); font-size: 11px; margin-bottom: 4px;">Diesel</div>
                                         <div style="color: var(--text); font-weight: 600;">${(r.dieselLiters !== null && r.dieselLiters !== undefined) ? Number(r.dieselLiters).toFixed(1) + 'L' : '—'}</div>
                                     </div>
                                     <div>
-                                        <div style="color: var(--muted);">Ø Vorlauf</div>
+                                        <div style="color: var(--muted); font-size: 11px; margin-bottom: 4px;">Ø Vorlauf</div>
                                         <div style="color: var(--text); font-weight: 600;">${av}</div>
                                     </div>
                                     <div>
-                                        <div style="color: var(--muted);">Ø Rücklauf</div>
+                                        <div style="color: var(--muted); font-size: 11px; margin-bottom: 4px;">Ø Rücklauf</div>
                                         <div style="color: var(--text); font-weight: 600;">${ar}</div>
                                     </div>
                                 </div>
@@ -2162,7 +2226,7 @@ function renderStatsModal(data) {
                 </div>
             `;
         } else {
-            daysListEl.innerHTML = '';
+            daysListEl.innerHTML = '<div style="color: var(--muted); text-align: center; padding: 20px;">Keine Tageswerte verfügbar</div>';
         }
     }
 
@@ -2174,7 +2238,30 @@ function renderStatsModal(data) {
             eventsEl.innerHTML = '<div style="color: var(--muted); text-align: center; padding: 10px;">Keine Heizungsperioden vorhanden.<br><span style="font-size: 10px;">Switch-Events werden automatisch gespeichert, wenn die Heizung ein- und ausgeschaltet wird.</span></div>';
         } else {
             // Sort events chronologically (oldest first)
-            const sortedEvents = [...data.switchEvents].sort((a, b) => {
+            let sortedEvents = [...data.switchEvents].sort((a, b) => {
+                if (a.timestamp && b.timestamp) return a.timestamp - b.timestamp;
+                if (a.uptimeMs && b.uptimeMs) return a.uptimeMs - b.uptimeMs;
+                return 0;
+            });
+
+            // Remove duplicates: if multiple events have the same timestamp and isOn value,
+            // prefer the one with tankLiters
+            const eventMap = new Map();
+            for (const evt of sortedEvents) {
+                const key = `${evt.timestamp || evt.uptimeMs}_${evt.isOn ? '1' : '0'}`;
+                const existing = eventMap.get(key);
+                if (!existing) {
+                    eventMap.set(key, evt);
+                } else {
+                    // Prefer event with tankLiters
+                    const evtHasTank = evt.tankLiters !== null && evt.tankLiters !== undefined && !isNaN(evt.tankLiters);
+                    const existingHasTank = existing.tankLiters !== null && existing.tankLiters !== undefined && !isNaN(existing.tankLiters);
+                    if (evtHasTank && !existingHasTank) {
+                        eventMap.set(key, evt);
+                    }
+                }
+            }
+            sortedEvents = Array.from(eventMap.values()).sort((a, b) => {
                 if (a.timestamp && b.timestamp) return a.timestamp - b.timestamp;
                 if (a.uptimeMs && b.uptimeMs) return a.uptimeMs - b.uptimeMs;
                 return 0;
@@ -2190,6 +2277,15 @@ function renderStatsModal(data) {
                     if (currentPeriod && currentPeriod.endTime === null) {
                         // Previous period never ended, skip it
                     }
+                    // Parse tankLiters - handle both number and string from MySQL
+                    let startTank = null;
+                    if (evt.tankLiters !== null && evt.tankLiters !== undefined) {
+                        const parsed = typeof evt.tankLiters === 'string' ? parseFloat(evt.tankLiters) : Number(evt.tankLiters);
+                        if (!isNaN(parsed) && parsed >= 0) {
+                            startTank = parsed;
+                        }
+                    }
+                    
                     currentPeriod = {
                         startTime: evt.timestamp ? evt.timestamp * 1000 : evt.uptimeMs,
                         endTime: null,
@@ -2197,16 +2293,25 @@ function renderStatsModal(data) {
                         startTempRuecklauf: evt.tempRuecklauf,
                         endTempVorlauf: null,
                         endTempRuecklauf: null,
-                        startTankLiters: evt.tankLiters,
+                        startTankLiters: startTank,
                         endTankLiters: null,
                         hasTimestamp: evt.timestamp > 0
                     };
                 } else if (currentPeriod && currentPeriod.endTime === null) {
                     // End of current period
+                    // Parse tankLiters - handle both number and string from MySQL
+                    let endTank = null;
+                    if (evt.tankLiters !== null && evt.tankLiters !== undefined) {
+                        const parsed = typeof evt.tankLiters === 'string' ? parseFloat(evt.tankLiters) : Number(evt.tankLiters);
+                        if (!isNaN(parsed) && parsed >= 0) {
+                            endTank = parsed;
+                        }
+                    }
+                    
                     currentPeriod.endTime = evt.timestamp ? evt.timestamp * 1000 : evt.uptimeMs;
                     currentPeriod.endTempVorlauf = evt.tempVorlauf;
                     currentPeriod.endTempRuecklauf = evt.tempRuecklauf;
-                    currentPeriod.endTankLiters = evt.tankLiters;
+                    currentPeriod.endTankLiters = endTank;
                     periods.push(currentPeriod);
                     currentPeriod = null;
                 }
@@ -2279,9 +2384,14 @@ function renderStatsModal(data) {
                     if (period.startTankLiters !== null && period.startTankLiters !== undefined &&
                         period.endTankLiters !== null && period.endTankLiters !== undefined &&
                         !isNaN(period.startTankLiters) && !isNaN(period.endTankLiters)) {
+                        // Tank level decreases when diesel is consumed
                         measuredConsumption = Number(period.startTankLiters) - Number(period.endTankLiters);
                         if (measuredConsumption > 0) {
                             consumptionComparison = ((measuredConsumption - calculatedConsumption) / calculatedConsumption * 100).toFixed(1);
+                        } else if (measuredConsumption < 0) {
+                            // Tank was refilled during heating period - show as negative
+                            measuredConsumption = Math.abs(measuredConsumption);
+                            consumptionComparison = null; // Can't compare if tank was refilled
                         }
                     }
 

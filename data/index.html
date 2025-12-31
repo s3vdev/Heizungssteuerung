@@ -44,20 +44,20 @@
             </div>
             
             <div style="padding: 20px;">
-                <!-- Firmware Update Section -->
+            <!-- Firmware Update Section -->
                 <div
                     style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                         <div
                             style="width: 40px; height: 40px; border-radius: 10px; background: rgba(52, 152, 219, 0.15); display: flex; align-items: center; justify-content: center;">
                             <i class="fas fa-microchip" style="color: #3498db; font-size: 18px;"></i>
-                        </div>
+                </div>
                         <div>
                             <div style="font-size: 15px; font-weight: 600; color: var(--text);">Firmware Update</div>
                             <div style="font-size: 12px; color: var(--muted);">C++ Backend-Code</div>
                         </div>
-                    </div>
-                    
+                </div>
+                
                     <div
                         style="background: rgba(255,255,255,0.02); border-left: 3px solid #3498db; padding: 10px 12px; margin-bottom: 16px; border-radius: 4px; font-size: 12px; color: var(--muted);">
                         <i class="fas fa-info-circle" style="margin-right: 6px; color: #3498db;"></i>
@@ -83,38 +83,38 @@
                         <button type="submit" class="btn btn-primary" id="uploadBtn" style="width: 100%;">
                             <i class="fas fa-upload" style="margin-right: 8px;"></i>
                             Firmware hochladen
-                        </button>
-                    </form>
-                    
+                    </button>
+                </form>
+                
                     <div id="uploadProgress" style="display: none; margin-top: 16px;">
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <div id="uploadStatus" style="font-size: 12px; color: var(--muted);"></div>
                             <div id="uploadProgressPercent"
                                 style="font-size: 12px; font-weight: 600; color: var(--text);">0%</div>
-                        </div>
+                    </div>
                         <div
                             style="background: rgba(255,255,255,0.05); border-radius: 8px; height: 12px; overflow: hidden; position: relative;">
                             <div id="uploadProgressBar"
                                 style="background: #3498db; height: 100%; width: 0%; transition: width 0.3s;"></div>
                         </div>
-                    </div>
                 </div>
-                
-                <!-- Frontend Update Section -->
+            </div>
+            
+            <!-- Frontend Update Section -->
                 <div
                     style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                         <div
                             style="width: 40px; height: 40px; border-radius: 10px; background: rgba(155, 89, 182, 0.15); display: flex; align-items: center; justify-content: center;">
                             <i class="fas fa-code" style="color: #9b59b6; font-size: 18px;"></i>
-                        </div>
+                </div>
                         <div>
                             <div style="font-size: 15px; font-weight: 600; color: var(--text);">Frontend Update</div>
                             <div style="font-size: 12px; color: var(--muted);">HTML/CSS/JavaScript</div>
                         </div>
-                    </div>
-                    
+                </div>
+                
                     <div
                         style="background: rgba(255,255,255,0.02); border-left: 3px solid #9b59b6; padding: 10px 12px; margin-bottom: 16px; border-radius: 4px; font-size: 12px; color: var(--muted);">
                         <i class="fas fa-info-circle" style="margin-right: 6px; color: #9b59b6;"></i>
@@ -140,16 +140,16 @@
                         <button type="submit" class="btn btn-primary" id="uploadBtnFS" style="width: 100%;">
                             <i class="fas fa-upload" style="margin-right: 8px;"></i>
                             Frontend hochladen
-                        </button>
-                    </form>
-                    
+                    </button>
+                </form>
+                
                     <div id="uploadProgressFS" style="display: none; margin-top: 16px;">
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <div id="uploadStatusFS" style="font-size: 12px; color: var(--muted);"></div>
                             <div id="uploadProgressPercentFS"
                                 style="font-size: 12px; font-weight: 600; color: var(--text);">0%</div>
-                        </div>
+                    </div>
                         <div
                             style="background: rgba(255,255,255,0.05); border-radius: 8px; height: 12px; overflow: hidden; position: relative;">
                             <div id="uploadProgressBarFS"
@@ -169,6 +169,16 @@
                 <button class="modal-close" onclick="closeStatsModal()">×</button>
             </div>
 
+            <div id="statsModalMySQLWarning" style="display: none; background: rgba(255, 165, 0, 0.15); border: 1px solid rgba(255, 165, 0, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px; color: var(--text); font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">⚠️</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; margin-bottom: 4px;">MySQL-Verbindung nicht verfügbar</div>
+                        <div style="color: var(--text-secondary);">Es werden nur lokale Daten angezeigt. Historische Statistiken sind nicht verfügbar.</div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="info-box" style="font-size: 12px; margin-bottom: 12px;">
                 Tageswerte werden auf dem ESP32 gespeichert (kleine Ring-History, spart Speicher). Für aussagekräftige
                 Tages-/Wochenwerte muss NTP aktiv sein.
@@ -191,7 +201,17 @@
                 </div>
             </div>
 
-            <div id="statsModalDaysList" style="margin-top: 14px;"></div>
+            <div id="statsModalLoading" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary);">
+                <div class="spinner" style="width: 48px; height: 48px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; margin: 0 auto 16px; animation: spin 1s linear infinite;"></div>
+                <div style="font-size: 14px; font-weight: 500;">Lade Statistiken aus MySQL...</div>
+            </div>
+            <style>
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+
+            <div id="statsModalDaysList" style="margin-top: 14px; max-height: 400px; overflow-y: auto; padding-right: 8px;"></div>
             
             <div id="statsModalSwitchEvents" style="margin-top: 20px;"></div>
         </div>
@@ -700,7 +720,7 @@
                                 Heute</div>
                             <div style="font-size: 20px; font-weight: 700; color: var(--text);"
                                 id="todaySwitchesCompact">0x</div>
-                        </div>
+                    </div>
                         <div
                             style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
                             <div
@@ -708,14 +728,14 @@
                                 Gesamt</div>
                             <div style="font-size: 20px; font-weight: 700; color: var(--text);"
                                 id="totalSwitchesCompact">0x</div>
-                        </div>
+                    </div>
                         <div
                             style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
                             <div
                                 style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
                                 Heizung ON</div>
                             <div style="font-size: 16px; font-weight: 600; color: var(--text);" id="onTimeCompact">0h 0m
-                        </div>
+                    </div>
                         </div>
                         <div
                             style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
