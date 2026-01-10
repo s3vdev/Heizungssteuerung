@@ -1595,6 +1595,12 @@ bool saveDailyStatsToMySQL() {
     unsigned long finalOnSeconds = todayOnSeconds > 0 ? todayOnSeconds : stats.onTimeSeconds;
     unsigned long finalOffSeconds = todayOffSeconds > 0 ? todayOffSeconds : stats.offTimeSeconds;
     
+    // Only save to MySQL if heater actually ran (has switches or ON time)
+    if (stats.todaySwitches == 0 && finalOnSeconds == 0) {
+        Serial.println("[MySQL] Skipping daily stats save - no heating activity today");
+        return true; // Return true to avoid retry, but don't save
+    }
+    
     // Calculate diesel consumption
     float todayDieselLiters = (finalOnSeconds / 3600.0) * state.dieselConsumptionPerHour;
     
@@ -1669,10 +1675,12 @@ bool saveDailyStatsToMySQL() {
 bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
     // Safety checks
     if (strlen(MYSQL_API_URL) == 0) {
+        state.mysqlConnected = false;
         return false; // MySQL API disabled
     }
     
     if (WiFi.status() != WL_CONNECTED) {
+        state.mysqlConnected = false;
         return false; // No WiFi connection
     }
     
@@ -1681,6 +1689,7 @@ bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
     const unsigned long MAX_MYSQL_TIME_MS = 4000; // Max 4 seconds total
     
     bool hasTodayData = false;
+    bool anyRequestSuccess = false; // Track if any request succeeded
     String baseUrl = String(MYSQL_API_URL);
     
     // Fetch today's data - use separate HTTPClient for each request
@@ -1697,6 +1706,7 @@ bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
         int httpCode = http.GET();
         
         if (httpCode == HTTP_CODE_OK) {
+            anyRequestSuccess = true; // At least one request succeeded
             String payload = http.getString();
             http.end();
             
@@ -1757,6 +1767,7 @@ bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
             int httpCode = http.GET();
             
             if (httpCode == HTTP_CODE_OK) {
+                anyRequestSuccess = true; // At least one request succeeded
                 String payload = http.getString();
                 http.end();
                 
@@ -1808,6 +1819,7 @@ bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
             int httpCode = http.GET();
             
             if (httpCode == HTTP_CODE_OK) {
+                anyRequestSuccess = true; // At least one request succeeded
                 String payload = http.getString();
                 http.end();
                 
@@ -1839,6 +1851,10 @@ bool fetchMySQLStats(StaticJsonDocument<8192>& doc) {
             }
         }
     } // HTTPClient destroyed here
+    
+    // Update MySQL connection status based on request success
+    state.mysqlConnected = anyRequestSuccess;
+    state.lastMySQLCheck = millis();
     
     // Return true if we got today's data, false otherwise (will trigger fallback)
     return hasTodayData;
@@ -3527,6 +3543,13 @@ void loop() {
     if (now - lastTankRead >= TANK_READ_INTERVAL) {
         lastTankRead = now;
         updateTankLevel();
+    }
+    
+    // Check MySQL connection status every 30 seconds (if MySQL is enabled)
+    if (strlen(MYSQL_API_URL) > 0 && WiFi.status() == WL_CONNECTED) {
+        if (now - state.lastMySQLCheck >= 30000) { // 30 seconds
+            checkMySQLConnection();
+        }
     }
     
     // Save daily stats to MySQL every 5 minutes (if MySQL is enabled)

@@ -2068,7 +2068,8 @@ function renderStatsModal(data) {
     // Show/hide MySQL warning
     const mysqlWarningEl = document.getElementById('statsModalMySQLWarning');
     if (mysqlWarningEl) {
-        const mysqlAvailable = data.mysqlAvailable !== undefined ? data.mysqlAvailable : true;
+        // Show warning if mysqlAvailable is explicitly false or undefined (treat undefined as unavailable)
+        const mysqlAvailable = data.mysqlAvailable === true;
         mysqlWarningEl.style.display = mysqlAvailable ? 'none' : 'block';
     }
 
@@ -2080,8 +2081,15 @@ function renderStatsModal(data) {
     const offSec = data.offTimeSeconds ?? currentState.offTimeSeconds ?? 0;
 
     // Build rows array: today first, then history
+    // Only include today if heater actually ran (has switches > 0)
     const rows = [];
-    if (data.today && data.today.dateKey) rows.push({ ...data.today, _today: true });
+    if (data.today && data.today.dateKey) {
+        const todaySwitches = Number(data.today.switches ?? 0);
+        // Only add today if there were actual heating cycles (switches > 0)
+        if (todaySwitches > 0) {
+            rows.push({ ...data.today, _today: true });
+        }
+    }
     if (Array.isArray(data.days)) {
         for (const d of data.days) rows.push(d);
     }
@@ -2178,11 +2186,14 @@ function renderStatsModal(data) {
     // Render daily values as cards (scrollable list)
     const daysListEl = document.getElementById('statsModalDaysList');
     if (daysListEl) {
-        // Filter: Only show days with actual data (switches > 0 OR onSeconds > 0)
+        // Filter: Only show days with actual heating activity (switches > 0)
+        // This ensures we only show days where the heater actually ran
+        // Parse as numbers to handle both string and number values from MySQL
         const displayRows = rows.filter(r => {
-            const hasSwitches = (r.switches ?? 0) > 0;
-            const hasOnTime = (r.onSeconds ?? 0) > 0;
-            return hasSwitches || hasOnTime;
+            const switches = Number(r.switches ?? 0);
+            // Only show days with actual heating cycles (switches > 0)
+            // This filters out old/incorrect data where onSeconds exists but switches is 0
+            return switches > 0;
         });
         
         if (displayRows.length > 0) {
